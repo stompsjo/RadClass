@@ -102,10 +102,10 @@ class RadClass:
 
         # extract requisite data rows
         data_matrix = self.processor.data_slice(self.datapath, rows)
-        #try:
-        #    self.cache[rows[-1]]
-        #except IndexError:
-        #    print("Out of Cache!")
+        try:
+            self.cache[rows[-1]]
+        except IndexError:
+            print("Out of Cache!")
 
         # normalize by live times to produce count rate data
         #for row in range(len(rows)):
@@ -200,7 +200,7 @@ class RadClass:
                 print("=========================================================")
                 print("Currently working on timestamps: {}\n".format(readable_time))
 
-            #self.run_cache()
+            self.run_cache()
             
             # execute analysis and advance in stride
             rows = self.collect_rows()
