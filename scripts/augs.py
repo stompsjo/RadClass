@@ -71,7 +71,7 @@ class DANSE:
         elif subtraction and event_idx is not None and len(X) <= 1:
             raise ValueError('X must be 2D to do background subtraction.')
         elif mode not in modes:
-            raise ValueError('Input mode not recognized.')
+            raise ValueError('Input mode not supported.')
 
         # subtract a background estimation if it wasn't done prior
         if subtraction:
@@ -156,7 +156,7 @@ class DANSE:
         elif subtraction and event_idx is not None and len(X) <= 1:
             raise ValueError('X must be 2D to do background subtraction.')
         elif mode not in modes:
-            raise ValueError('Input mode not recognized.')
+            raise ValueError('Input mode not supported.')
 
         # subtract a background estimation if it wasn't done prior
         if subtraction:
@@ -182,8 +182,52 @@ class DANSE:
     def resolution(self):
         pass
 
-    def mask(self):
-        pass
+    def mask(self, X, mode='random', interval=5, block=(0, 100)):
+        '''
+        Mask specific regions of a spectrum to force feature importance.
+        This may or may not be physically realistic, depending on the masking
+        scenario (e.g. pileup) but it represents a common image augmentation.
+        NOTE: the default values for interval and block are not used, but
+        recommended sizes or degrees for reasonable augmentations.
+
+        Inputs:
+        X: array-like; should be 1D, i.e. one spectrum to be augmented
+        mode: str; three modes are supported:
+            'interval': mask every interval's channel
+            'block': mask everything within a block range
+            'both': mask every interval's channel within a block range
+            'random': randomly pick one of the above
+        interval: int; mask every [this int] channel in the spectrum
+        block: tuple; spectral range to mask (assumed spectral length is
+            1000 channels)
+        '''
+
+        modes = ['interval', 'block', 'both']
+        if mode != 'random' or mode not in modes:
+            raise ValueError('Input mode not supported.')
+        if mode == 'random':
+            mode = np.random.choice(modes)
+            if mode == 'interval':
+                # high => exclusive: 10+1
+                interval = np.random.randint(1, 11)
+            elif mode == 'block':
+                # default spectral length is 1,000 channels
+                # TODO: abstract spectral length
+                low = np.random.randint(0, 999)
+                # default block width is low+10 to max length
+                # TODO: abstract block width
+                high = np.random.randint(low+10, 1000)
+                block = (low, high)
+
+        # mask spectrum (i.e. set values to 0)
+        if mode == 'interval':
+            X[::interval] = 0
+        elif mode == 'block':
+            X[block[0]:block[1]] = 0
+        elif mode == 'both':
+            X[block[0]:block[1]:interval] = 0
+
+        return X
 
     def gain_shift(self):
         pass
