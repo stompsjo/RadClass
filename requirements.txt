@@ -1,2 +1,4 @@
 numpy
 h5py
+progressbar2
+scipy>=1.7.0
