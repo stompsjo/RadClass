@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.optimize import curve_fit
 
 
 # DANS: Data Augmentations for Nuclear Spectra feature-Extraction
@@ -175,6 +176,31 @@ class DANSE:
         X *= 1/r**2
 
         return X + X_bckg
+
+    def _gauss(self, x, amp, mu, sigma):
+        '''
+        Fit equation for a Gaussian distribution.
+        Inputs:
+        x: data
+        amp: amplitude = A/sigma*sqrt(2*pi)
+        mu: mean
+        sigma: standard deviation
+        '''
+
+        return amp * np.exp(-((x - mu) / 4 / sigma)**2)
+
+    def _fit(self, x, y, p0=None):
+        '''
+        Fitting procedure using a Gaussian distribution.
+        Inputs:
+        x: independent variables data (channel or energy of each bin)
+        y: dependent variable data (count-rate)
+        p0: optional initial guess, list of [amp, mu, sigma]
+        '''
+
+        popt, pcov = curve_fit(self._gauss, x, y, p0)
+
+        return popt, pcov
 
     def nuclear(self):
         pass
