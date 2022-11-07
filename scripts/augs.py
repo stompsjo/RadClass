@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize import curve_fit
+from math import erfc
 
 
 # DANS: Data Augmentations for Nuclear Spectra feature-Extraction
@@ -181,32 +182,124 @@ class DANSE:
         '''
         Fit equation for a Gaussian distribution.
         Inputs:
-        x: data
-        amp: amplitude = A/sigma*sqrt(2*pi)
-        mu: mean
-        sigma: standard deviation
+        x: array-like; 1D spectrum array of count-rates
+        amp: float; amplitude = A/sigma*sqrt(2*pi)
+        mu: float; mean
+        sigma: float; standard deviation
         '''
 
         return amp * np.exp(-((x - mu) / 4 / sigma)**2)
 
-    def _fit(self, x, y, p0=None):
-        '''
-        Fitting procedure using a Gaussian distribution.
+    def _emg(self, x, amp, mu, sigma, tau):
+        """
+        Exponentially Modifed Gaussian (for small tau). See:
+        https://en.wikipedia.org/wiki/Exponentially_modified_Gaussian_distribution
         Inputs:
-        x: independent variables data (channel or energy of each bin)
-        y: dependent variable data (count-rate)
-        p0: optional initial guess, list of [amp, mu, sigma]
+        x: array-like; 1D spectrum array of count-rates
+        amp: float; amplitude = A/sigma*sqrt(2*pi)
+        mu: float; mean
+        sigma: float; standard deviation
+        tau: float; exponent relaxation time
+        """
+
+        term1 = np.exp(-0.5 * np.power((x - mu) / sigma, 2))
+        term2 = 1 + (((x - mu) * tau) / sigma**2)
+        return amp * term1 / term2
+
+    def _lingauss(self, x, amp, mu, sigma, m, b):
+        '''
+        Includes a linear term to the above function. Used for modeling
+        (assumption) linear background on either shoulder of a gamma photopeak.
+        Inputs:
+        x: array-like; 1D spectrum array of count-rates
+        amp: float; amplitude = A/sigma*sqrt(2*pi)
+        mu: float; mean
+        sigma: float; standard deviation
+        m: float; linear slope for background/baseline
+        b: float; y-intercept for background/baseline
         '''
 
-        popt, pcov = curve_fit(self._gauss, x, y, p0)
+        return amp * np.exp(-0.5 * np.power((x - mu) / sigma, 2.)) + m*x + b
 
-        return popt, pcov
+    def _fit(self, roi, X):
+        '''
+        Fit function used by resolution() for fitting a Gaussian function
+        on top of a linear background in a specified region of interest.
+        TODO: Add a threshold for fit 'goodness.' Return -1 if failed.
+        Inputs:
+        roi: tuple; (min, max) bin/index values for region of interest - used
+            to index from data, X
+        X: array-like; 1D spectrum array of count-rates
+        '''
+
+        # binning of data (default usually 0->1000 bins)
+        ch = np.arange(0, len(X))
+        region = X[roi[0]:roi[1]]
+
+        # initial guess for fit
+        max_y = np.max(region)
+        max_z = ch[roi[0]:roi[1]][np.argmax(region)]
+        # [amp, mu, sigma, m, b]
+        p0 = [max_y, max_z, 1., 0, X[roi[0]]]
+
+        coeff, var_matrix = curve_fit(self._lingauss,
+                                      ch[roi[0]:roi[1]],
+                                      region,
+                                      p0=p0)
+
+        return coeff
+
+        # # as calculated exactly from Gaussian statistics
+        # fwhm = 2*np.sqrt(2*np.log(2))*coeff[1]
+        # return fwhm
+
+    def _crude_bckg(self, roi, X):
+        '''
+        Linear estimation of background using the bounds of an ROI.
+        Uses point-slope formula and the bounds for the ROI region to create
+        an array of the expected background.
+        Inputs:
+        roi: tuple; (min, max) bin/index values for region of interest - used
+            to index from data, X
+        X: array-like; 1D spectrum array of count-rates
+        '''
+
+        lower_bound = roi[0]
+        upper_bound = roi[1]
+
+        y1 = X[lower_bound]
+        y2 = X[upper_bound]
+        slope = (y2 - y1) / (upper_bound - lower_bound)
+
+        y = slope * (np.arange(lower_bound, upper_bound) - lower_bound) + y1
+
+        return y, slope, y1
 
     def nuclear(self):
         pass
 
-    def resolution(self):
-        pass
+    def resolution(self, roi, X, multiplier=1.5):
+        # [amp, mu, sigma, m, b]
+        coeff = self._fit(roi, X)
+        fwhm = 2*np.sqrt(2*np.log(2))*coeff[2]
+        new_sigma = multiplier * fwhm / (2*np.sqrt(2*np.log(2)))
+        coeff[2] = new_sigma
+
+        # there's no need to refind background/baseline
+        # because it was fit in coeff above
+        # but this could be used to isolate background
+        # y, m, b = self._crude_bckg(roi, X)
+
+        ch = np.arange(roi[0], roi[1])
+        peak = self._lingauss(ch,
+                              amp=coeff[0],
+                              mu=coeff[1],
+                              sigma=new_sigma,
+                              m=coeff[3],
+                              b=coeff[4])
+
+        X[roi[0]:roi[1]] = peak
+        return X
 
     def mask(self, X, mode='random', interval=5, block=(0, 100)):
         '''
@@ -289,10 +382,11 @@ class DANSE:
                              multiplier,
                              ')')
         elif len(counts.shape) > 1:
-            raise ValueError('gain_shift expects only 1 spectrum (i.e. 1D vector) but ',
+            raise ValueError('gain_shift expects only 1 spectrum \
+                                (i.e. 1D vector) but ',
                              counts.shape[0],
                              'were passed')
-        
+
         spectrum = np.array([])
         binning = np.array([bins[0]])
         # for each (two) channels in spectrum
@@ -308,19 +402,20 @@ class DANSE:
         # randomly select (mulitplier/n) percent of
         # synthetically generated channels to keep
         keep = np.sort(np.random.choice(spectrum.shape[0],
-                                        size=int(spectrum.shape[0]*(multiplier/n)),
+                                        size=int(spectrum.shape[0]
+                                                 * (multiplier/n)),
                                         replace=False))
         spectrum = spectrum[keep]
 
         # construct binning vector
         start = bins[0]
         # scale the binning so spectral features appear
-        # around the same energy they originally appeared 
+        # around the same energy they originally appeared
         if calibrate and bins[0] <= 0:
             # if binning starts at/below 0
             # scale forward
             start *= multiplier
-        elif calibrate and bins[0] >0:
+        elif calibrate and bins[0] > 0:
             # if binning starts positive
             # scale backward
             start /= multiplier
