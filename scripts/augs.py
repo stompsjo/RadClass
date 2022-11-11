@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.optimize import curve_fit
 from math import erfc
+from scipy.stats import binned_statistic
 
 
 # DANS: Data Augmentations for Nuclear Spectra feature-Extraction
@@ -348,7 +349,23 @@ class DANSE:
 
         return X
 
-    def gain_shift(counts, bins, multiplier=1.5, n=2, calibrate=False):
+    def ResampleLinear1D(original, targetLen):
+        '''
+        https://stackoverflow.com/questions/20322079/downsample-a-1d-numpy-array
+        '''
+        original = np.array(original, dtype=float)
+        index_arr = np.linspace(0, len(original)-1, num=targetLen, dtype=float)
+        index_floor = np.array(index_arr, dtype=int)  # Round down
+        index_ceil = index_floor + 1
+        index_rem = index_arr - index_floor  # Remain
+
+        val1 = original[index_floor]
+        val2 = original[index_ceil % len(original)]
+        interp = val1 * (1.0-index_rem) + val2 * index_rem
+        assert(len(interp) == targetLen)
+        return interp
+
+    def gain_shift(self, counts, bins, multiplier=1.5, n=2, calibrate=False):
         '''
         Modulate the gain-shift underlying a spectrum.
         This simulates a change in the voltage to channel mapping, which
@@ -375,7 +392,7 @@ class DANSE:
         # this might enforce some shape across all random augmentations
 
         # enforce sampling consistency
-        if multiplier < n:
+        if multiplier > n:
             raise ValueError('n (',
                              n,
                              ') must be greater than multiplier (',
@@ -401,11 +418,12 @@ class DANSE:
         spectrum = np.append(spectrum, counts[-1])
         # randomly select (mulitplier/n) percent of
         # synthetically generated channels to keep
-        keep = np.sort(np.random.choice(spectrum.shape[0],
-                                        size=int(spectrum.shape[0]
-                                                 * (multiplier/n)),
-                                        replace=False))
-        spectrum = spectrum[keep]
+        # keep = np.sort(np.random.choice(spectrum.shape[0],
+        #                                 size=int(spectrum.shape[0]
+        #                                          * (multiplier/n)),
+        #                                 replace=False))
+        # spectrum = spectrum[keep]
+        spectrum *= np.sum(counts)/np.sum(spectrum)
 
         # construct binning vector
         start = bins[0]
