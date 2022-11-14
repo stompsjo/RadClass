@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.optimize import curve_fit
-from math import erfc
-from scipy.stats import binned_statistic
+from scipy.stats import poisson
 
 
 # DANS: Data Augmentations for Nuclear Spectra feature-Extraction
@@ -365,7 +364,7 @@ class DANSE:
         assert(len(interp) == targetLen)
         return interp
 
-    def gain_shift(self, counts, bins, multiplier=1.5, n=2, calibrate=False):
+    def gain_shift(self, counts, mu=np.random.uniform(0, 5), bins=None):
         '''
         Modulate the gain-shift underlying a spectrum.
         This simulates a change in the voltage to channel mapping, which
@@ -376,68 +375,41 @@ class DANSE:
 
         Inputs:
         counts: array-like; 1D spectrum, with count-rate for each channel
+        mu: float; Poisson parameter for gain drift. Determines the severity
+            of gain drift in spectrum. As of right now, the drift is energy
+            dependent (i.e. more drift for higher energies).
         bins: array-like; 1D vector (with length len(counts)+1) of either
-            bin edges in energy space or channel numbers
-        multiplier: float; severity of gain shift. Small augmentations
-            should range between 0.5-1.5, but any value is valid
-        n: int; number of bins to generate between input channels.
-            should be greater than multiplier to ensure positive
-            or negative gain shift stretch
-        calibrate: bool; if True, rescale bin-edge values to ensure
-            spectral features appear at the same energy for
-            gain-shifted spectra
+            bin edges in energy space or channel numbers.
         '''
-        # TODO: Only remove synthetically generated channels
-        # always keep channels that were originally in the spectrum
-        # this might enforce some shape across all random augmentations
+        # TODO: Downward gain drift
+        # TODO: Up/Down gain shift
 
-        # enforce sampling consistency
-        if multiplier > n:
-            raise ValueError('n (',
-                             n,
-                             ') must be greater than multiplier (',
-                             multiplier,
-                             ')')
-        elif len(counts.shape) > 1:
-            raise ValueError('gain_shift expects only 1 spectrum \
-                                (i.e. 1D vector) but ',
-                             counts.shape[0],
-                             'were passed')
+        if len(counts.shape) > 1:
+            raise ValueError(f'gain_shift expects only 1 spectrum (i.e. 1D \
+                               vector) but {counts.shape[0]} were passed')
 
-        spectrum = np.array([])
-        binning = np.array([bins[0]])
-        # for each (two) channels in spectrum
-        for i, c in enumerate(counts[1:]):
-            # create n linearly arranged count-rate bins
-            # between two original channels
-            new = np.linspace(counts[i], c, num=n, endpoint=False)
-            # save all bins in new spectrum
-            spectrum = np.append(spectrum, new)
+        new_ct = counts.copy()
+        for i, c in enumerate(counts):
+            # randomly sample a new assigned index for every count in bin
+            # using np.unique, summarize which index each count goes to
+            idx, nc = np.unique(np.round(poisson.rvs(mu=mu*(i/counts.shape[0]),
+                                                     size=int(c))),
+                                return_counts=True)
+            # check to see if any indices are greater than the spectral length
+            missing_idx = np.count_nonzero(i+idx >= new_ct.shape[0])
+            if missing_idx > 0:
+                # add blank bins if so
+                new_ct = np.append(new_ct,
+                                   np.repeat(0,
+                                             np.max(idx)+i-new_ct.shape[0]+1))
+            # distribute all counts according to their poisson index
+            new_ct[(i+idx).astype(int)] += nc
+            # adjust for double-counting
+            new_ct[i] -= np.sum(nc)
+        # recalculate binning if passed
+        new_b = bins
+        if bins is not None:
+            width = bins[1] - bins[0]
+            new_b = np.arange(bins[0], bins[0]+((len(new_ct)+1)*width), width)
 
-        # save the endpoint
-        spectrum = np.append(spectrum, counts[-1])
-        # randomly select (mulitplier/n) percent of
-        # synthetically generated channels to keep
-        # keep = np.sort(np.random.choice(spectrum.shape[0],
-        #                                 size=int(spectrum.shape[0]
-        #                                          * (multiplier/n)),
-        #                                 replace=False))
-        # spectrum = spectrum[keep]
-        spectrum *= np.sum(counts)/np.sum(spectrum)
-
-        # construct binning vector
-        start = bins[0]
-        # scale the binning so spectral features appear
-        # around the same energy they originally appeared
-        if calibrate and bins[0] <= 0:
-            # if binning starts at/below 0
-            # scale forward
-            start *= multiplier
-        elif calibrate and bins[0] > 0:
-            # if binning starts positive
-            # scale backward
-            start /= multiplier
-        # arrange binning along energy range
-        binning = np.linspace(start, bins[-1]*multiplier, len(spectrum)+1)
-
-        return spectrum, binning
+        return new_ct, new_b
