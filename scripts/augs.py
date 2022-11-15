@@ -391,7 +391,8 @@ class DANSE:
         assert(len(interp) == targetLen)
         return interp
 
-    def gain_shift(self, counts, mu=np.random.uniform(0, 5), bins=None, negative=False):
+    def gain_shift(self, counts, mu=np.random.uniform(0, 5),
+                   k=0, bins=None, negative=False):
         '''
         Modulate the gain-shift underlying a spectrum.
         This simulates a change in the voltage to channel mapping, which
@@ -405,18 +406,30 @@ class DANSE:
         mu: float; Poisson parameter for gain drift. Determines the severity
             of gain drift in spectrum. As of right now, the drift is energy
             dependent (i.e. more drift for higher energies).
+        k: int; number of bins to shift the entire spectrum by
         bins: array-like; 1D vector (with length len(counts)+1) of either
             bin edges in energy space or channel numbers.
         negative: bool; determine whether gain shift/drift is in a negative
             direction instead of the default positive.
         '''
-        # TODO: Downward gain drift
-        # TODO: Up/Down gain shift
 
         if len(counts.shape) > 1:
             raise ValueError(f'gain_shift expects only 1 spectrum (i.e. 1D \
                                vector) but {counts.shape[0]} were passed')
 
+        # gain-shift algorithm
+        if k != 0:
+            # add blank bins before or after the spectrum
+            if negative:
+                counts = np.insert(counts, -1, np.repeat(0., k))
+            else:
+                counts = np.insert(counts, 0, np.repeat(0., k))
+            # fix the length of the spectrum to be the same as before
+            if bins is not None:
+                width = bins[1] - bins[0]
+                bins = np.arange(bins[0], bins[-1]+(k*width), width)
+
+        # negative shift using downsampling
         if negative:
             new_ct = self._ResampleLinear1D(counts, counts.shape[0]-mu)
             if bins is not None:
@@ -426,6 +439,7 @@ class DANSE:
                                   width)
             return new_ct, new_b
 
+        # gain-drift algorithm
         new_ct = counts.copy()
         for i, c in enumerate(counts):
             # randomly sample a new assigned index for every count in bin
