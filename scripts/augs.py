@@ -364,7 +364,34 @@ class DANSE:
         assert(len(interp) == targetLen)
         return interp
 
-    def gain_shift(self, counts, mu=np.random.uniform(0, 5), bins=None):
+    def _ResampleLinear1D(self, original, targetLen):
+        '''
+        Originally from StackOverflow.
+        Upsamples or downsamples an array by interpolating
+        the value in each bin to a given length.
+
+        Inputs:
+        original: array-like; spectrum or array to be resampled
+        targetLen: int; target length to resize/resample array
+        '''
+
+        original = np.array(original, dtype=float)
+        index_arr = np.linspace(0, len(original)-1, num=targetLen, dtype=float)
+        # find the floor (round-down) for each bin (cutting off with int)
+        index_floor = np.array(index_arr, dtype=int)
+        # find the ceiling (max/round-up) for each bin
+        index_ceil = index_floor + 1
+        # compute the difference/remainder
+        index_rem = index_arr - index_floor
+
+        val1 = original[index_floor]
+        val2 = original[index_ceil % len(original)]
+        # interpolate the new value for each new bin
+        interp = val1 * (1.0-index_rem) + val2 * index_rem
+        assert(len(interp) == targetLen)
+        return interp
+
+    def gain_shift(self, counts, mu=np.random.uniform(0, 5), bins=None, negative=False):
         '''
         Modulate the gain-shift underlying a spectrum.
         This simulates a change in the voltage to channel mapping, which
@@ -380,6 +407,8 @@ class DANSE:
             dependent (i.e. more drift for higher energies).
         bins: array-like; 1D vector (with length len(counts)+1) of either
             bin edges in energy space or channel numbers.
+        negative: bool; determine whether gain shift/drift is in a negative
+            direction instead of the default positive.
         '''
         # TODO: Downward gain drift
         # TODO: Up/Down gain shift
@@ -387,6 +416,15 @@ class DANSE:
         if len(counts.shape) > 1:
             raise ValueError(f'gain_shift expects only 1 spectrum (i.e. 1D \
                                vector) but {counts.shape[0]} were passed')
+
+        if negative:
+            new_ct = self._ResampleLinear1D(counts, counts.shape[0]-mu)
+            if bins is not None:
+                width = bins[1] - bins[0]
+                new_b = np.arange(bins[0],
+                                  bins[0]+((len(new_ct)+1)*width),
+                                  width)
+            return new_ct, new_b
 
         new_ct = counts.copy()
         for i, c in enumerate(counts):
