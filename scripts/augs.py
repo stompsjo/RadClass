@@ -411,6 +411,9 @@ class DANSE:
             bin edges in energy space or channel numbers.
         negative: bool; determine whether gain shift/drift is in a negative
             direction instead of the default positive.
+            Can also be used instead of positive shift algorithm by using the
+            combination negative=True, mu<0
+            NOTE: Which algorithm should be kept, both?
         '''
 
         if len(counts.shape) > 1:
@@ -418,12 +421,16 @@ class DANSE:
                                vector) but {counts.shape[0]} were passed')
 
         # gain-shift algorithm
-        if k != 0:
-            # add blank bins before or after the spectrum
-            if negative:
-                counts = np.insert(counts, -1, np.repeat(0., k))
-            else:
-                counts = np.insert(counts, 0, np.repeat(0., k))
+        # add blank bins before or after the spectrum
+        if k < 0:
+            counts = np.append(counts, np.repeat(0., np.absolute(k)))
+            counts[0] = np.sum(counts[:np.absolute(k)])
+            counts = np.delete(counts, np.arange(1, np.absolute(k)))
+            # fix the length of the spectrum to be the same as before
+            if bins is not None:
+                bins = np.linspace(bins[0], bins[-1], counts.shape[0]+1)
+        elif k > 0:
+            counts = np.insert(counts, 0, np.repeat(0., k))
             # fix the length of the spectrum to be the same as before
             if bins is not None:
                 width = bins[1] - bins[0]
@@ -431,13 +438,19 @@ class DANSE:
 
         # negative shift using downsampling
         if negative:
-            new_ct = self._ResampleLinear1D(counts, counts.shape[0]-mu)
+            new_b = bins
+            new_ct = self._ResampleLinear1D(counts, int(counts.shape[0]+mu))
+            # enforce the same count-rate
+            new_ct *= np.sum(counts)/np.sum(new_ct)
             if bins is not None:
                 width = bins[1] - bins[0]
                 new_b = np.arange(bins[0],
                                   bins[0]+((len(new_ct)+1)*width),
                                   width)
             return new_ct, new_b
+
+        if mu is None:
+            return counts, bins
 
         # gain-drift algorithm
         new_ct = counts.copy()
