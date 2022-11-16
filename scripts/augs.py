@@ -279,6 +279,9 @@ class DANSE:
         pass
 
     def resolution(self, roi, X, multiplier=1.5):
+        # avoid overwriting original data
+        X = X.copy()
+
         # [amp, mu, sigma, m, b]
         coeff = self._fit(roi, X)
         fwhm = 2*np.sqrt(2*np.log(2))*coeff[2]
@@ -298,6 +301,8 @@ class DANSE:
                               m=coeff[3],
                               b=coeff[4])
 
+        # add noise to the otherwise smooth transformation
+        peak = self.resample(peak)
         X[roi[0]:roi[1]] = peak
         return X
 
