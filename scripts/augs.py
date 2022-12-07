@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.optimize import curve_fit
 from scipy.stats import poisson
+from scipy.signal import find_peaks
 
 
 # DANS: Data Augmentations for Nuclear Spectra feature-Extraction
@@ -153,7 +154,7 @@ class DANSE:
         modes = ['min', 'mean']
         # input error checks
         if subtraction and event_idx is None:
-            raise ValueError('If subtraction=True,',
+            raise ValueError('If subtraction=True, ',
                              'event_idx must be specified.')
         elif subtraction and event_idx is not None and len(X) <= 1:
             raise ValueError('X must be 2D to do background subtraction.')
@@ -275,8 +276,82 @@ class DANSE:
 
         return y, slope, y1
 
-    def nuclear(self):
-        pass
+    def nuclear(self, X, E, binE=3., sigma=0., escape=False):
+        # escape peak error to ensure physics
+        if escape and E < 1022:
+            raise ValueError('Photopeaks below 1,022 keV ',
+                             'do not produce escape peaks.')
+        # avoid overwriting original data
+        X = X.copy()
+        bins = X.shape[0]
+
+        # find (photo)peaks with heights above baseline of at least 100 counts
+        peaks, properties = find_peaks(X, prominence=100)
+        # find the two tallest peak to estimate energy resolution
+        fit_peaks = peaks[np.argsort(properties['prominences'])[-2:]]
+        # fit the two most prominent peaks
+        # [amp, mu, sigma, m, b]
+        coeff1 = self._fit([fit_peaks[0]-10, fit_peaks[0]+10], X)
+        amp1, sigma1 = coeff1[0], coeff1[2]
+        coeff2 = self._fit([fit_peaks[1]-10, fit_peaks[1]+10], X)
+        amp2, sigma2 = coeff2[0], coeff2[2]
+        # assume linear relationship in peak counts and width over spectrum
+        # TODO: add user input for peak intensity/counts/amplitude
+        slope_sigma = abs((sigma2 - sigma1)/(fit_peaks[1] - fit_peaks[0]))
+        slope_counts = np.sqrt(2*np.pi) * abs((amp2 - amp1) /
+                                              (fit_peaks[1] - fit_peaks[0]))
+
+        # calculate bin for input energy
+        b = int(E/binE)
+        # insert peak at input energy
+        if not escape:
+            # approximate width and counts from relationship estimated above
+            sigma_peak = slope_sigma * b
+            size_peak = slope_counts * b
+            # create another spectrum with only the peak
+            new_peak, _ = np.histogram(np.round(
+                                        np.random.normal(loc=b,
+                                                         scale=sigma_peak,
+                                                         size=int(size_peak))),
+                                       bins=bins,
+                                       range=(0, bins))
+            X = X+new_peak
+        # insert escape peaks if specified or physically realistic
+        if escape or E >= 1022:
+            # fit the peak at input energy
+            # [amp, mu, sigma, m, b]
+            coeff = self._fit([b-10, b+10], X)
+            # background counts integral
+            width = (b+10)-(b-10)
+            background = (coeff[3]/2)*((b+10)**2
+                                       - (b-10)**2) + coeff[4] * (width)
+            # find difference from background
+            peak_counts = np.sum(X[b-10:b+10]) - background
+            print(peak_counts, background)
+
+            # normal distribution parameters for single and double escape peaks
+            b_single = int((E-511)/binE)
+            sigma_single = slope_sigma * b_single
+            size_single = ((E-511)/E)*peak_counts
+            b_double = int((E-1022)/binE)
+            sigma_double = slope_sigma * b_double
+            size_double = ((E-1022)/E)*peak_counts
+
+            # create another spectrum with only the peak for each escape peak
+            single, _ = np.histogram(np.round(
+                                      np.random.normal(loc=b_single,
+                                                       scale=sigma_single,
+                                                       size=int(size_single))),
+                                     bins=bins,
+                                     range=(0, bins))
+            double, _ = np.histogram(np.round(
+                                      np.random.normal(loc=b_double,
+                                                       scale=sigma_double,
+                                                       size=int(size_double))),
+                                     bins=bins,
+                                     range=(0, bins))
+            X = X+single+double
+        return X
 
     def resolution(self, roi, X, multiplier=1.5):
         # avoid overwriting original data
