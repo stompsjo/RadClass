@@ -276,7 +276,31 @@ class DANSE:
 
         return y, slope, y1
 
-    def nuclear(self, X, E, binE=3., sigma=0., escape=False):
+    def nuclear(self, roi, X, escape, binE=3., width=None, counts=None):
+        '''
+        Inject different nuclear interactions into the spectrum.
+        Current functionality allows for the introduction of either escape
+        peaks or entirely new photopeaks (ignoring Compton continuum).
+        Width and counts relationship for escape and photo-peaks is assumed
+        to be linear across the spectrum. However, the user can specify
+        width and counts as an input.
+        Inputs:
+        roi: tuple; (min, max) bin/index values for region of interest - used
+            to index from data, X
+        X: array-like; 1D spectrum array of count-rates
+        escape: bool; False if adding photopeak, True if adding escape peaks.
+            if True, roi must include the peak > 1,022 keV to introduce peaks.
+        binE: float; Energy/Channel ratio for spectrum. Necessary for computing
+            escape peak relationships.
+        width: float; width, in channels, of peak to introduce. Technically
+            defined as the standard deviation for the distribution
+            (see numpy.random.normal documentation).
+        counts: int; number of counts to introduce in peak (i.e. intensity).
+        '''
+
+        # assumes the center of the normal distribution is the ROI center
+        b = np.mean(roi)
+        E = b*binE
         # escape peak error to ensure physics
         if escape and E < 1022:
             raise ValueError('Photopeaks below 1,022 keV ',
@@ -285,34 +309,39 @@ class DANSE:
         X = X.copy()
         bins = X.shape[0]
 
-        # find (photo)peaks with heights above baseline of at least 100 counts
-        peaks, properties = find_peaks(X, prominence=100)
-        # find the two tallest peak to estimate energy resolution
-        fit_peaks = peaks[np.argsort(properties['prominences'])[-2:]]
-        # fit the two most prominent peaks
+        # find (photo)peaks with heights above baseline of at least 10 counts
+        # ignoring low-energy distribution typically residing in first 100 bins
+        peaks, properties = find_peaks(X[100:], prominence=10)
+        # find the tallest peak to estimate energy resolution
+        # remember to shift the peak found by the 100-bin mask
+        fit_peak = peaks[np.argsort(properties['prominences'])[-1]]+100
+        # fit the most prominent peak
         # [amp, mu, sigma, m, b]
-        coeff1 = self._fit([fit_peaks[0]-10, fit_peaks[0]+10], X)
-        amp1, sigma1 = coeff1[0], coeff1[2]
-        coeff2 = self._fit([fit_peaks[1]-10, fit_peaks[1]+10], X)
-        amp2, sigma2 = coeff2[0], coeff2[2]
+        coeff = self._fit(roi, X)
+        amp, sigma = coeff[0], coeff[2]
         # assume linear relationship in peak counts and width over spectrum
-        # TODO: add user input for peak intensity/counts/amplitude
-        slope_sigma = abs((sigma2 - sigma1)/(fit_peaks[1] - fit_peaks[0]))
-        slope_counts = np.sqrt(2*np.pi) * abs((amp2 - amp1) /
-                                              (fit_peaks[1] - fit_peaks[0]))
+        # width is approximately a delta fnct. at the beginning of the spectrum
+        # counts are approximately zero by the end of the spectrum
+        slope_sigma = sigma/fit_peak
+        # slope_counts should be negative because fit_peak < bins
+        slope_counts = np.sqrt(2*np.pi) * amp / (fit_peak - bins)
+        max_counts = -slope_counts * bins
 
-        # calculate bin for input energy
-        b = int(E/binE)
         # insert peak at input energy
         if not escape:
             # approximate width and counts from relationship estimated above
             sigma_peak = slope_sigma * b
-            size_peak = slope_counts * b
+            cts_peak = max_counts - (slope_counts * b)
+            # overwrite if user input is given
+            if width is not None:
+                sigma_peak = width
+            if counts is not None:
+                cts_peak = counts
             # create another spectrum with only the peak
             new_peak, _ = np.histogram(np.round(
                                         np.random.normal(loc=b,
                                                          scale=sigma_peak,
-                                                         size=int(size_peak))),
+                                                         size=int(cts_peak))),
                                        bins=bins,
                                        range=(0, bins))
             X = X+new_peak
@@ -320,40 +349,55 @@ class DANSE:
         if escape or E >= 1022:
             # fit the peak at input energy
             # [amp, mu, sigma, m, b]
-            coeff = self._fit([b-10, b+10], X)
+            coeff = self._fit(roi, X)
             # background counts integral
-            width = (b+10)-(b-10)
-            background = (coeff[3]/2)*((b+10)**2
-                                       - (b-10)**2) + coeff[4] * (width)
+            bckg_width = roi[1] - roi[0]
+            background = (coeff[3]/2)*(roi[1]**2
+                                       - roi[0]**2) + coeff[4] * (bckg_width)
             # find difference from background
-            peak_counts = np.sum(X[b-10:b+10]) - background
-            print(peak_counts, background)
+            peak_counts = np.sum(X[roi[0]:roi[1]]) - background
 
-            # normal distribution parameters for single and double escape peaks
+            # normal distribution parameters for escape peaks
             b_single = int((E-511)/binE)
             sigma_single = slope_sigma * b_single
-            size_single = ((E-511)/E)*peak_counts
+            cts_single = ((E-511)/E)*peak_counts
             b_double = int((E-1022)/binE)
             sigma_double = slope_sigma * b_double
-            size_double = ((E-1022)/E)*peak_counts
+            cts_double = ((E-1022)/E)*peak_counts
+            # overwrite if user input is given
+            if width is not None:
+                sigma_single = sigma_double = width
+            if counts is not None:
+                cts_single = cts_double = counts
 
-            # create another spectrum with only the peak for each escape peak
+            # create a blank spectrum with only the escape peak
             single, _ = np.histogram(np.round(
                                       np.random.normal(loc=b_single,
                                                        scale=sigma_single,
-                                                       size=int(size_single))),
+                                                       size=int(cts_single))),
                                      bins=bins,
                                      range=(0, bins))
             double, _ = np.histogram(np.round(
                                       np.random.normal(loc=b_double,
                                                        scale=sigma_double,
-                                                       size=int(size_double))),
+                                                       size=int(cts_double))),
                                      bins=bins,
                                      range=(0, bins))
             X = X+single+double
         return X
 
     def resolution(self, roi, X, multiplier=1.5):
+        '''
+        Manipulate the resolution, or width, of a photopeak as measured by
+        the full-width at half-maximum (FWHM).
+        Inputs:
+        roi: tuple; (min, max) bin/index values for region of interest - used
+            to index from data, X
+        X: array-like; 1D spectrum array of count-rates
+        multiplier: float; scaler to manipulate FWHM by. Greater than 1
+            widens the peak and vice versa.
+        '''
+
         # avoid overwriting original data
         X = X.copy()
 
