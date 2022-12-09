@@ -472,25 +472,10 @@ class DANSE:
 
         return X
 
-    def ResampleLinear1D(original, targetLen):
-        '''
-        https://stackoverflow.com/questions/20322079/downsample-a-1d-numpy-array
-        '''
-        original = np.array(original, dtype=float)
-        index_arr = np.linspace(0, len(original)-1, num=targetLen, dtype=float)
-        index_floor = np.array(index_arr, dtype=int)  # Round down
-        index_ceil = index_floor + 1
-        index_rem = index_arr - index_floor  # Remain
-
-        val1 = original[index_floor]
-        val2 = original[index_ceil % len(original)]
-        interp = val1 * (1.0-index_rem) + val2 * index_rem
-        assert(len(interp) == targetLen)
-        return interp
-
     def _ResampleLinear1D(self, original, targetLen):
         '''
-        Originally from StackOverflow.
+        Originally from StackOverflow:
+        https://stackoverflow.com/questions/20322079/downsample-a-1d-numpy-array
         Upsamples or downsamples an array by interpolating
         the value in each bin to a given length.
 
@@ -538,6 +523,9 @@ class DANSE:
             Can also be used instead of positive shift algorithm by using the
             combination negative=True, mu<0
             NOTE: Which algorithm should be kept, both?
+            TODO: Future feature implementation should probably focus
+                just on the rebinning algorithm, since it is simpler
+                and can work in both directions.
         '''
 
         if len(counts.shape) > 1:
