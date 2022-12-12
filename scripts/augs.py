@@ -291,6 +291,8 @@ class DANSE:
         Wolfram Alpha. This is a crude computation with poorly vetted
         papers working with HPGe (rather than the typical NaI) detectors.
         NOTE: This breaks down for E>~4 MeV, the ratio will grow > 1.
+            For E<~1.3MeV, the polynomial starts to increase again, but at
+            a very low intensity for such low energy gammas.
         TODO: find better sources or a better method for intensity estimation.
 
         Inputs:
@@ -339,9 +341,11 @@ class DANSE:
         # find the tallest peak to estimate energy resolution
         # remember to shift the peak found by the 100-bin mask
         fit_peak = peaks[np.argsort(properties['prominences'])[-1]]+100
+        # fit ROI to estimate representative peak counts
+        fit_roi = [fit_peak-100, fit_peak+100]
         # fit the most prominent peak
         # [amp, mu, sigma, m, b]
-        coeff = self._fit(roi, X)
+        coeff = self._fit(fit_roi, X)
         amp, sigma = coeff[0], coeff[2]
         # assume linear relationship in peak counts and width over spectrum
         # width is approximately a delta fnct. at the beginning of the spectrum
@@ -350,7 +354,6 @@ class DANSE:
         # slope_counts should be negative because fit_peak < bins
         slope_counts = np.sqrt(2*np.pi) * amp / (fit_peak - bins)
         max_counts = -slope_counts * bins
-        print(coeff[1], amp, slope_counts, max_counts)
 
         # insert peak at input energy
         if not escape:
@@ -388,9 +391,7 @@ class DANSE:
             b_double = int((E-1022)/binE)
             sigma_double = slope_sigma * b_double
             # escape peak intensity estimated as a function of E
-            print(self._escape_int(E), E)
             cts = self._escape_int(E)*peak_counts
-            print(cts)
             # overwrite if user input is given
             if width is not None:
                 sigma_single = sigma_double = width
