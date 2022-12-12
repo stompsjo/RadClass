@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.optimize import curve_fit
-from scipy.stats import poisson
 from scipy.signal import find_peaks
 
 
@@ -500,77 +499,29 @@ class DANSE:
         assert(len(interp) == targetLen)
         return interp
 
-    def gain_shift(self, counts, mu=np.random.uniform(0, 5),
-                   k=0, bins=None, negative=False):
+    def _Poisson1D(self, X, lam):
         '''
-        Modulate the gain-shift underlying a spectrum.
-        This simulates a change in the voltage to channel mapping, which
-        will affect how the spectral shape appears in channel vs. energy space.
-        If a positive gain shift occurs (multiplier increases), e.g. 1V=1ch
-        becomes 0.9V=1ch, spectral features will stretch out and widen across
-        the spectrum. Vice versa for a negative gain shift.
+        Apply positive gain shift by randomly distributing counts in each bin
+        according to a Poisson distribution with parameter lam.
+        The random Poisson distribution results in a spectrum that can have a
+        slightly different distribution of counts rather than the uniform
+        deformation of _ResampleLinear1D.
+        The drift is energy dependent (i.e. more drift for higher energies).
+        This mode only supports positive gain shift.
 
         Inputs:
-        counts: array-like; 1D spectrum, with count-rate for each channel
-        mu: float; Poisson parameter for gain drift. Determines the severity
-            of gain drift in spectrum. As of right now, the drift is energy
-            dependent (i.e. more drift for higher energies).
-        k: int; number of bins to shift the entire spectrum by
-        bins: array-like; 1D vector (with length len(counts)+1) of either
-            bin edges in energy space or channel numbers.
-        negative: bool; determine whether gain shift/drift is in a negative
-            direction instead of the default positive.
-            Can also be used instead of positive shift algorithm by using the
-            combination negative=True, mu<0
-            NOTE: Which algorithm should be kept, both?
-            TODO: Future feature implementation should probably focus
-                just on the rebinning algorithm, since it is simpler
-                and can work in both directions.
+        X: array-like; 1D spectrum, with count-rate for each channel
+        lam: float; Poisson parameter for gain drift. Determines the severity
+            of gain drift in spectrum.
         '''
 
-        if len(counts.shape) > 1:
-            raise ValueError(f'gain_shift expects only 1 spectrum (i.e. 1D \
-                               vector) but {counts.shape[0]} were passed')
-
-        # gain-shift algorithm
-        # add blank bins before or after the spectrum
-        if k < 0:
-            counts = np.append(counts, np.repeat(0., np.absolute(k)))
-            counts[0] = np.sum(counts[:np.absolute(k)])
-            counts = np.delete(counts, np.arange(1, np.absolute(k)))
-            # fix the length of the spectrum to be the same as before
-            if bins is not None:
-                bins = np.linspace(bins[0], bins[-1], counts.shape[0]+1)
-        elif k > 0:
-            counts = np.insert(counts, 0, np.repeat(0., k))
-            # fix the length of the spectrum to be the same as before
-            if bins is not None:
-                width = bins[1] - bins[0]
-                bins = np.arange(bins[0], bins[-1]+(k*width), width)
-
-        # negative shift using downsampling
-        if negative:
-            new_b = bins
-            new_ct = self._ResampleLinear1D(counts, int(counts.shape[0]+mu))
-            # enforce the same count-rate
-            new_ct *= np.sum(counts)/np.sum(new_ct)
-            if bins is not None:
-                width = bins[1] - bins[0]
-                new_b = np.arange(bins[0],
-                                  bins[0]+((len(new_ct)+1)*width),
-                                  width)
-            return new_ct, new_b
-
-        if mu is None:
-            return counts, bins
-
-        # gain-drift algorithm
-        new_ct = counts.copy()
-        for i, c in enumerate(counts):
+        new_ct = X.copy()
+        for i, c in enumerate(X):
             # randomly sample a new assigned index for every count in bin
             # using np.unique, summarize which index each count goes to
-            idx, nc = np.unique(np.round(poisson.rvs(mu=mu*(i/counts.shape[0]),
-                                                     size=int(c))),
+            idx, nc = np.unique(np.round(
+                                    np.random.poisson(lam=lam*(i/X.shape[0]),
+                                                      size=int(c))),
                                 return_counts=True)
             # check to see if any indices are greater than the spectral length
             missing_idx = np.count_nonzero(i+idx >= new_ct.shape[0])
@@ -583,10 +534,86 @@ class DANSE:
             new_ct[(i+idx).astype(int)] += nc
             # adjust for double-counting
             new_ct[i] -= np.sum(nc)
-        # recalculate binning if passed
-        new_b = bins
+
+        return new_ct
+
+    def gain_shift(self, X, bins=None, lam=np.random.uniform(-5, 5),
+                   k=0, mode='resample'):
+        '''
+        Modulate the gain-shift underlying a spectrum.
+        This simulates a change in the voltage to channel mapping, which
+        will affect how the spectral shape appears in channel vs. energy space.
+        If a positive gain shift occurs (multiplier increases), e.g. 1V=1ch
+        becomes 0.9V=1ch, spectral features will stretch out and widen across
+        the spectrum. Vice versa for a negative gain shift.
+        Qualitatively, a positive drift manifests in a smeared or stretched
+        spectrum with wider peaks whereas a negative drift manifests in a
+        squeezed or tightened spectrum with narrower peaks.
+        Both a positive and negative gain drift are supported, however only
+        mode='resample' supports negative drift.
+
+        Inputs:
+        X: array-like; 1D spectrum, with count-rate for each channel
+        bins: array-like; 1D vector (with length len(counts)+1) of either
+            bin edges in energy space or channel numbers.
+        lam: float; Poisson parameter for gain drift. Determines the severity
+            of gain drift in spectrum.
+        k: int; number of bins to shift the entire spectrum by
+        mode: str; two possible gain shift algorithms can be used
+            'resample': linearly resample the spectrum according to a new
+            length (lam), evenly redistributing the counts.
+            'poisson': statistically/randomly resample the counts in each bin
+            according to a poisson distribution of parameter lam.
+            NOTE: 'poisson' only works in the positive direction.
+            TODO: Future feature implementation should probably focus
+                just on the rebinning algorithm, since it is simpler
+                and can work in both directions.
+        '''
+
+        modes = ['resample', 'poisson']
+        if mode not in modes:
+            raise ValueError('{} is not a supported algorithm.'.format(mode))
+        if len(X.shape) > 1:
+            raise ValueError(f'gain_shift expects only 1 spectrum (i.e. 1D \
+                               vector) but {X.shape[0]} were passed')
+
+        # gain-shift algorithm
+        # add blank bins before or after the spectrum
+        if k < 0:
+            X = np.append(X, np.repeat(0., np.absolute(k)))
+            X[0] = np.sum(X[:np.absolute(k)])
+            X = np.delete(X, np.arange(1, np.absolute(k)))
+            # fix the length of the spectrum to be the same as before
+            if bins is not None:
+                bins = np.linspace(bins[0], bins[-1], X.shape[0]+1)
+        elif k > 0:
+            X = np.insert(X, 0, np.repeat(0., k))
+            # fix the length of the spectrum to be the same as before
+            if bins is not None:
+                width = bins[1] - bins[0]
+                bins = np.arange(bins[0], bins[-1]+(k*width), width)
+
+        # only a direct bin shift is desired
+        if lam == 0.:
+            return X, bins
+        # gain-drift algorithm(s)
+        elif mode == 'resample' or (mode == 'poisson' and lam < 0):
+            # second condition needed since 'poisson' does not support
+            # negative gain drift (lam < 0)
+            new_ct = self._ResampleLinear1D(X, int(X.shape[0]+lam))
+        elif mode == 'poisson':
+            # recalculate binning if passed
+            new_ct = self._Poisson1D(X, abs(lam))
+
+        # enforce the same count-rate
+        new_ct *= np.sum(X)/np.sum(new_ct)
+
+        # compute bins if passed
         if bins is not None:
             width = bins[1] - bins[0]
-            new_b = np.arange(bins[0], bins[0]+((len(new_ct)+1)*width), width)
-
-        return new_ct, new_b
+            new_b = np.arange(bins[0],
+                              bins[0]+((len(new_ct)+1)*width),
+                              width)
+            return new_ct, new_b
+        else:
+            return new_ct
