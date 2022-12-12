@@ -389,6 +389,12 @@ class DANSE:
         '''
         Manipulate the resolution, or width, of a photopeak as measured by
         the full-width at half-maximum (FWHM).
+        In terms of reasonable values for multiplier, be cautious for
+        values >> 1. Wider peaks will overwrite a wider area of the spectrum.
+        Note that sometimes the interplay between a tighter or wider ROI
+        (which determines the region to fit) and the size of the multiplier
+        can affect the shape of the resulting peak.
+
         Inputs:
         roi: tuple; (min, max) bin/index values for region of interest - used
             to index from data, X
@@ -402,6 +408,7 @@ class DANSE:
 
         # [amp, mu, sigma, m, b]
         coeff = self._fit(roi, X)
+        # amp = coeff[0]
         fwhm = 2*np.sqrt(2*np.log(2))*coeff[2]
         new_sigma = multiplier * fwhm / (2*np.sqrt(2*np.log(2)))
         coeff[2] = new_sigma
@@ -411,6 +418,15 @@ class DANSE:
         # but this could be used to isolate background
         # y, m, b = self._crude_bckg(roi, X)
 
+        # expanding ROI if new peak is too wide
+        # 6-sigma ensures the entire Gaussian distribution is captured
+        # NOTE: this is unstable, new peaks (and the background/baseline)
+        # can overwrite other spectral features, should it be removed?
+        if 4*new_sigma >= roi[1]-roi[0]:
+            # maximum expansion cannot be more than length of spectrum
+            roi[0] = max(0, roi[0]-int(2*new_sigma))
+            roi[1] = min(X.shape[0]-1, roi[1]+int(2*new_sigma))
+
         ch = np.arange(roi[0], roi[1])
         peak = self._lingauss(ch,
                               amp=coeff[0],
@@ -419,8 +435,13 @@ class DANSE:
                               m=coeff[3],
                               b=coeff[4])
 
+        # normalize to conserve relative count-rate
+        # NOTE: this is realistic physically, but is it necesary?
+        # peak = peak * (np.sum(X[roi[0]:roi[1]]) / np.sum(peak))
+
         # add noise to the otherwise smooth transformation
-        peak = self.resample(peak)
+        # .clip() necessary so counts are not negative
+        peak = self.resample(peak.clip(min=0))
         X[roi[0]:roi[1]] = peak
         return X
 
