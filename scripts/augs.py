@@ -181,6 +181,7 @@ class DANSE:
     def _gauss(self, x, amp, mu, sigma):
         '''
         Fit equation for a Gaussian distribution.
+
         Inputs:
         x: array-like; 1D spectrum array of count-rates
         amp: float; amplitude = A/sigma*sqrt(2*pi)
@@ -194,6 +195,7 @@ class DANSE:
         """
         Exponentially Modifed Gaussian (for small tau). See:
         https://en.wikipedia.org/wiki/Exponentially_modified_Gaussian_distribution
+
         Inputs:
         x: array-like; 1D spectrum array of count-rates
         amp: float; amplitude = A/sigma*sqrt(2*pi)
@@ -210,6 +212,7 @@ class DANSE:
         '''
         Includes a linear term to the above function. Used for modeling
         (assumption) linear background on either shoulder of a gamma photopeak.
+
         Inputs:
         x: array-like; 1D spectrum array of count-rates
         amp: float; amplitude = A/sigma*sqrt(2*pi)
@@ -226,6 +229,7 @@ class DANSE:
         Fit function used by resolution() for fitting a Gaussian function
         on top of a linear background in a specified region of interest.
         TODO: Add a threshold for fit 'goodness.' Return -1 if failed.
+
         Inputs:
         roi: tuple; (min, max) bin/index values for region of interest - used
             to index from data, X
@@ -258,6 +262,7 @@ class DANSE:
         Linear estimation of background using the bounds of an ROI.
         Uses point-slope formula and the bounds for the ROI region to create
         an array of the expected background.
+
         Inputs:
         roi: tuple; (min, max) bin/index values for region of interest - used
             to index from data, X
@@ -275,6 +280,25 @@ class DANSE:
 
         return y, slope, y1
 
+    def _escape_int(self, E):
+        '''
+        Computes the ratio of escape peak/photopeak intensity as
+        a function of photopeak energy (> 1.022 MeV).
+        This is roughly estimated from two papers:
+        - 10.1016/0029-554X(73)90186-9
+        - 10.13182/NT11-A12285
+        Three values are eye-estimated and polynomially fitted using
+        Wolfram Alpha. This is a crude computation with poorly vetted
+        papers working with HPGe (rather than the typical NaI) detectors.
+        NOTE: This breaks down for E>~4 MeV, the ratio will grow > 1.
+        TODO: find better sources or a better method for intensity estimation.
+
+        Inputs:
+        E: float; energy of photopeak
+        '''
+
+        return (8.63095e-8*E**2) - (0.000209524*E) + 0.136518
+
     def nuclear(self, roi, X, escape, binE=3., width=None, counts=None):
         '''
         Inject different nuclear interactions into the spectrum.
@@ -283,6 +307,7 @@ class DANSE:
         Width and counts relationship for escape and photo-peaks is assumed
         to be linear across the spectrum. However, the user can specify
         width and counts as an input.
+
         Inputs:
         roi: tuple; (min, max) bin/index values for region of interest - used
             to index from data, X
@@ -325,6 +350,7 @@ class DANSE:
         # slope_counts should be negative because fit_peak < bins
         slope_counts = np.sqrt(2*np.pi) * amp / (fit_peak - bins)
         max_counts = -slope_counts * bins
+        print(coeff[1], amp, slope_counts, max_counts)
 
         # insert peak at input energy
         if not escape:
@@ -359,27 +385,29 @@ class DANSE:
             # normal distribution parameters for escape peaks
             b_single = int((E-511)/binE)
             sigma_single = slope_sigma * b_single
-            cts_single = ((E-511)/E)*peak_counts
             b_double = int((E-1022)/binE)
             sigma_double = slope_sigma * b_double
-            cts_double = ((E-1022)/E)*peak_counts
+            # escape peak intensity estimated as a function of E
+            print(self._escape_int(E), E)
+            cts = self._escape_int(E)*peak_counts
+            print(cts)
             # overwrite if user input is given
             if width is not None:
                 sigma_single = sigma_double = width
             if counts is not None:
-                cts_single = cts_double = counts
+                cts = counts
 
             # create a blank spectrum with only the escape peak
             single, _ = np.histogram(np.round(
                                       np.random.normal(loc=b_single,
                                                        scale=sigma_single,
-                                                       size=int(cts_single))),
+                                                       size=int(cts))),
                                      bins=bins,
                                      range=(0, bins))
             double, _ = np.histogram(np.round(
                                       np.random.normal(loc=b_double,
                                                        scale=sigma_double,
-                                                       size=int(cts_double))),
+                                                       size=int(cts))),
                                      bins=bins,
                                      range=(0, bins))
             X = X+single+double
