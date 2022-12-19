@@ -414,7 +414,7 @@ class DANSE:
             X = X+single+double
         return X
 
-    def resolution(self, roi, X, multiplier=1.5):
+    def resolution(self, roi, X, multiplier=1.5, conserve=True):
         '''
         Manipulate the resolution, or width, of a photopeak as measured by
         the full-width at half-maximum (FWHM).
@@ -430,6 +430,8 @@ class DANSE:
         X: array-like; 1D spectrum array of count-rates
         multiplier: float; scaler to manipulate FWHM by. Greater than 1
             widens the peak and vice versa.
+        conserve: bool; if True, peak counts will be conserved after
+            augmentation, meaning a taller peak for multipler<1 & vice versa
         '''
 
         # avoid overwriting original data
@@ -463,6 +465,15 @@ class DANSE:
                               sigma=new_sigma,
                               m=coeff[3],
                               b=coeff[4])
+        if conserve:
+            # only counts from background
+            background = coeff[3]*ch + coeff[4]
+            # only counts from old peak
+            old_cts = (X[ch] - background).clip(min=0)
+            # only counts from new peak
+            new_cts = (peak - background).clip(min=0)
+            # scale new peak to conserve original counts
+            peak = (new_cts*(np.sum(old_cts)/np.sum(new_cts))) + background
 
         # normalize to conserve relative count-rate
         # NOTE: this is realistic physically, but is it necesary?
