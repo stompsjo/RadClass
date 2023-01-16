@@ -494,8 +494,11 @@ class DANSE:
             1000 channels)
         '''
 
-        modes = ['interval', 'block', 'both']
-        if mode != 'random' or mode not in modes:
+        # avoid overwriting original data
+        X = X.copy()
+
+        modes = ['random', 'interval', 'block', 'both']
+        if mode not in modes:
             raise ValueError('Input mode not supported.')
         if mode == 'random':
             mode = np.random.choice(modes)
