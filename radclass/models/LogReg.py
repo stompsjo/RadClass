@@ -4,7 +4,7 @@ from hyperopt import STATUS_OK
 from sklearn import linear_model
 # diagnostics
 from sklearn.metrics import balanced_accuracy_score
-from scripts.utils import run_hyperopt
+from radclass.scripts.utils import run_hyperopt
 import joblib
 
 

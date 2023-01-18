@@ -4,7 +4,7 @@ import time
 import logging
 import progressbar
 
-import RadClass.DataSet as ds
+from radclass import DataSet
 
 
 class Processor:
@@ -102,7 +102,7 @@ class Processor:
             is specified.
         '''
 
-        self.processor = ds.DataSet(self.labels)
+        self.processor = DataSet(self.labels)
         self.processor.init_database(self.filename, self.datapath)
 
         # possible invalid user input scenarios

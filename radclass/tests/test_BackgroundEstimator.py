@@ -3,8 +3,8 @@ import pytest
 import os
 from datetime import datetime, timedelta
 
-from RadClass.Processor import Processor
-from RadClass.BackgroundEstimator import BackgroundEstimator
+from radclass import Processor
+from radclass import BackgroundEstimator
 import tests.test_data as test_data
 
 start_date = datetime(2019, 2, 2)

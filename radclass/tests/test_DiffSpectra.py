@@ -3,8 +3,8 @@ import pytest
 import os
 from datetime import datetime, timedelta
 
-from RadClass.Processor import Processor
-from RadClass.DiffSpectra import DiffSpectra
+from radclass import Processor
+from radclass import DiffSpectra
 import tests.test_data as test_data
 
 # initialize sample data

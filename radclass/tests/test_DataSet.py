@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import os
 
-import RadClass.DataSet as ds
+from radclass import DataSet
 import tests.test_data as test_data
 
 # randomized data to store (smaller than an actual MUSE file)
@@ -19,7 +19,7 @@ def init_test_file():
 
 
 def test_init_database():
-    processor = ds.DataSet(test_data.labels)
+    processor = DataSet(test_data.labels)
 
     processor.init_database(test_data.filename, test_data.datapath)
 
@@ -32,7 +32,7 @@ def test_init_database():
 
 
 def test_data_slice():
-    processor = ds.DataSet(test_data.labels)
+    processor = DataSet(test_data.labels)
     # load file into processor's "memory"
     processor.init_database(test_data.filename, test_data.datapath)
 
@@ -50,7 +50,7 @@ def test_data_slice():
 
 
 def test_close():
-    processor = ds.DataSet(test_data.labels)
+    processor = DataSet(test_data.labels)
     # load file into processor's "memory"
     processor.init_database(test_data.filename, test_data.datapath)
 

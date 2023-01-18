@@ -3,8 +3,8 @@ import pytest
 import os
 from datetime import datetime, timedelta
 
-from RadClass.Processor import Processor
-from RadClass.H0 import H0
+from radclass import Processor
+from radclass import H0
 import tests.test_data as test_data
 
 # initialize sample data

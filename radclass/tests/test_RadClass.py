@@ -4,7 +4,7 @@ import pytest
 import os
 from datetime import datetime, timedelta
 
-from RadClass.Processor import Processor
+from radclass import Processor
 import tests.test_data as test_data
 
 # initialize sample data

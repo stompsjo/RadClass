@@ -11,9 +11,9 @@ import tests.test_data as test_data
 from hyperopt.pyll.base import scope
 from hyperopt import hp
 # testing utils
-import scripts.utils as utils
+import radclass.scripts.utils as utils
 # models
-from models.LogReg import LogReg
+from radclass.models import LogReg
 # testing write
 import joblib
 import os
