@@ -112,8 +112,7 @@ class DANSE:
             X_bckg = self._estimate(X_bckg, mode)
 
         # ensure no negative counts
-        # resample for smooth backgrounds (e.g. BEADS)
-        return self.resample((X + X_bckg).clip(min=0))
+        return (X + X_bckg).clip(min=0)
 
     def resample(self, X):
         '''
@@ -218,8 +217,7 @@ class DANSE:
         X *= r
 
         # ensure no negative counts
-        # resample for smooth backgrounds (e.g. BEADS)
-        return self.resample((X + X_bckg).clip(min=0)), r
+        return (X + X_bckg).clip(min=0), r
 
     def _gauss(self, x, amp, mu, sigma):
         '''
