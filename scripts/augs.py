@@ -1,13 +1,24 @@
+import warnings
+
 import numpy as np
 from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
+from scipy.stats import loguniform
+from beads.beads import beads
 
 
 # DANS: Data Augmentations for Nuclear Spectra feature-Extraction
 # TODO: standardize return to either include background or not
 class DANSE:
     def __init__(self):
-        pass
+        self.BEADS_PARAMS = dict( 
+            fc=4.749e-2,
+            r=4.1083,
+            df=2,
+            lam0=3.9907e-4,
+            lam1=4.5105e-3,
+            lam2=3.3433e-3,
+        )
 
     def _estimate(self, X_bckg, mode):
         '''
@@ -29,6 +40,8 @@ class DANSE:
             X_bckg = X_bckg[idx]
         elif mode == 'mean':
             X_bckg = np.mean(X_bckg, axis=1)
+        elif mode == 'beads':
+            X_bckg = beads(X_bckg.astype(float), **self.BEADS_PARAMS)[1]
 
         return X_bckg
 
@@ -65,29 +78,42 @@ class DANSE:
             'mean': take the average count-rate for each bin from X.
         '''
 
-        modes = ['min', 'mean']
+        X = X.copy()
+        modes = ['min', 'mean', 'beads']
         # input error checks
-        if subtraction and event_idx is None:
-            raise ValueError('If subtraction=True,',
-                             'event_idx must be specified.')
-        elif subtraction and event_idx is not None and len(X) <= 1:
+        if subtraction and event_idx is None and X.ndim > 1:
+            raise ValueError('If subtraction=True and len(X)>1, \
+                        event_idx must be specified.')
+        elif subtraction and event_idx is not None and X.ndim <= 1:
             raise ValueError('X must be 2D to do background subtraction.')
+        elif X_bckg.ndim > 1 and mode == 'beads':
+            raise ValueError('mode == {} does not support \
+                         multiple backgrounds'.format(mode))
         elif mode not in modes:
             raise ValueError('Input mode not supported.')
 
         # subtract a background estimation if it wasn't done prior
         if subtraction:
-            bckg = np.delete(X, event_idx, axis=0)
-            X = X[event_idx]
-
-            bckg = self.estimate(bckg, mode)
-            X -= bckg
+            if event_idx is not None:
+                bckg = np.delete(X, event_idx, axis=0)
+                X = X[event_idx]
+            else:
+                # estimate the baseline from the event itself
+                bckg = X.copy()
+            bckg = self._estimate(bckg, mode)
+            # ensure no negative counts
+            X = (X-bckg).clip(min=0)
 
         # estimate a background/baseline if multiple spectra are provided
-        if len(X_bckg) > 1:
-            X_bckg = self.estimate(X_bckg, mode)
+        if mode == 'beads':
+            warnings.warn('mode == {} assumes X_bckg has already \
+                undergone BEADS estimation.'.format(mode))
+        if X_bckg.ndim > 1 and mode != 'beads':
+            X_bckg = self._estimate(X_bckg, mode)
 
-        return X + X_bckg
+        # ensure no negative counts
+        # resample for smooth backgrounds (e.g. BEADS)
+        return self.resample((X + X_bckg).clip(min=0))
 
     def resample(self, X):
         '''
@@ -139,8 +165,9 @@ class DANSE:
             as the superimposed background. If 2D, use the mode input to
             complete background superimposition.
         r: tuple; [min, max) scaling ratio. Default values ensure random
-            scaling that is no more than 4x larger or smaller than the original
+            scaling that is no more than 2x larger or smaller than the original
             signal. See numpy.random.uniform for information on interval.
+            NOTE: Enforce a specific value with (r1, r2) where r1=r2.
         subtraction: bool; If True, conduct background subtraction on X
             (event_idx must not be None)
         event_idx: int(p); row index for event spectrum in X used for
@@ -150,33 +177,49 @@ class DANSE:
             'mean': take the average count-rate for each bin from X.
         '''
 
-        modes = ['min', 'mean']
+        X = X.copy()
+        modes = ['min', 'mean', 'beads']
         # input error checks
-        if subtraction and event_idx is None:
-            raise ValueError('If subtraction=True, ',
-                             'event_idx must be specified.')
-        elif subtraction and event_idx is not None and len(X) <= 1:
+        if subtraction and event_idx is None and X.ndim > 1:
+            raise ValueError('If subtraction=True and len(X)>1, \
+                        event_idx must be specified.')
+        elif subtraction and event_idx is not None and X.ndim <= 1:
             raise ValueError('X must be 2D to do background subtraction.')
+        elif X_bckg.ndim > 1 and mode == 'beads':
+            raise ValueError('mode == {} does not support \
+                         multiple backgrounds'.format(mode))
         elif mode not in modes:
             raise ValueError('Input mode not supported.')
 
+        if r <= 0:
+            raise ValueError('{} must be positive.'.format(r))
+
         # subtract a background estimation if it wasn't done prior
         if subtraction:
-            bckg = np.delete(X, event_idx, axis=0)
-            X = X[event_idx]
-
-            bckg = self.estimate(bckg, mode)
-            X -= bckg
+            if event_idx is not None:
+                bckg = np.delete(X, event_idx, axis=0)
+                X = X[event_idx]
+            else:
+                # estimate the baseline from the event itself
+                bckg = X.copy()
+            bckg = self._estimate(bckg, mode)
+            # ensure no negative counts
+            X = (X-bckg).clip(min=0)
 
         # estimate a background/baseline if multiple spectra are provided
-        if len(X_bckg) > 1:
-            X_bckg = self.estimate(X_bckg, mode)
+        if mode == 'beads':
+            warnings.warn('mode == {} assumes X_bckg has already \
+                undergone BEADS estimation.'.format(mode))
+        if X_bckg.ndim > 1 and mode != 'beads':
+            X_bckg = self._estimate(X_bckg, mode)
 
-        r = np.random.uniform(r[0], r[1])
+        # even random choice between upscaling and downscaling
+        r = loguniform(r[0], r[1], size=1)
+        X *= r
 
-        X *= 1/r**2
-
-        return X + X_bckg
+        # ensure no negative counts
+        # resample for smooth backgrounds (e.g. BEADS)
+        return self.resample((X + X_bckg).clip(min=0)), r
 
     def _gauss(self, x, amp, mu, sigma):
         '''
@@ -246,10 +289,15 @@ class DANSE:
         # [amp, mu, sigma, m, b]
         p0 = [max_y, max_z, 1., 0, X[roi[0]]]
 
+        # prevents nonsensical fit parameters (fail otherwise)
+        lower_bound = [0, 0, 0, -np.inf, -np.inf]
+        upper_bound = [np.inf, X.shape[0]-1, np.inf, np.inf, np.inf]
+        bounds = (lower_bound, upper_bound)
         coeff, var_matrix = curve_fit(self._lingauss,
                                       ch[roi[0]:roi[1]],
                                       region,
-                                      p0=p0)
+                                      p0=p0,
+                                      bounds=bounds)
 
         return coeff
 
@@ -301,7 +349,8 @@ class DANSE:
 
         return (8.63095e-8*E**2) - (0.000209524*E) + 0.136518
 
-    def nuclear(self, roi, X, escape, binE=3., width=None, counts=None):
+    def nuclear(self, roi, X, escape, binE=3.,
+                width=None, counts=None, subtract=False):
         '''
         Inject different nuclear interactions into the spectrum.
         Current functionality allows for the introduction of either escape
@@ -311,7 +360,7 @@ class DANSE:
         width and counts as an input.
 
         Inputs:
-        roi: tuple; (min, max) bin/index values for region of interest - used
+        roi: list; (min, max) bin/index values for region of interest - used
             to index from data, X
         X: array-like; 1D spectrum array of count-rates
         escape: bool; False if adding photopeak, True if adding escape peaks.
@@ -332,20 +381,24 @@ class DANSE:
             raise ValueError('Photopeaks below 1,022 keV ',
                              'do not produce escape peaks.')
         # avoid overwriting original data
-        X = X.copy()
-        bins = X.shape[0]
+        nX = X.copy()
+        bins = nX.shape[0]
 
         # find (photo)peaks with heights above baseline of at least 10 counts
         # ignoring low-energy distribution typically residing in first 100 bins
-        peaks, properties = find_peaks(X[100:], prominence=10)
+        peaks, properties = find_peaks(X[100:],
+                                       prominence=20,
+                                       width=4,
+                                       rel_height=0.5)
         # find the tallest peak to estimate energy resolution
         # remember to shift the peak found by the 100-bin mask
         fit_peak = peaks[np.argsort(properties['prominences'])[-1]]+100
         # fit ROI to estimate representative peak counts
-        fit_roi = [fit_peak-100, fit_peak+100]
+        w = int(len(nX)*0.1)
+        fit_roi = [max(fit_peak-w, 0), min(fit_peak+w, bins-1)]
         # fit the most prominent peak
         # [amp, mu, sigma, m, b]
-        coeff = self._fit(fit_roi, X)
+        coeff = self._fit(fit_roi, nX)
         amp, sigma = coeff[0], coeff[2]
         # assume linear relationship in peak counts and width over spectrum
         # width is approximately a delta fnct. at the beginning of the spectrum
@@ -372,18 +425,21 @@ class DANSE:
                                                          size=int(cts_peak))),
                                        bins=bins,
                                        range=(0, bins))
-            X = X+new_peak
+            if subtract:
+                nX = nX-new_peak
+            else:
+                nX = nX+new_peak
         # insert escape peaks if specified or physically realistic
-        if escape or E >= 1022:
+        if escape or (E >= 1022 and not subtract):
             # fit the peak at input energy
             # [amp, mu, sigma, m, b]
-            coeff = self._fit(roi, X)
+            coeff = self._fit(roi, nX)
             # background counts integral
             bckg_width = roi[1] - roi[0]
             background = (coeff[3]/2)*(roi[1]**2
                                        - roi[0]**2) + coeff[4] * (bckg_width)
             # find difference from background
-            peak_counts = np.sum(X[roi[0]:roi[1]]) - background
+            peak_counts = np.sum(nX[roi[0]:roi[1]]) - background
 
             # normal distribution parameters for escape peaks
             b_single = int((E-511)/binE)
@@ -411,8 +467,38 @@ class DANSE:
                                                        size=int(cts))),
                                      bins=bins,
                                      range=(0, bins))
-            X = X+single+double
-        return X
+            if subtract:
+                nX = nX-single-double
+            else:
+                nX = nX+single+double
+        return nX
+
+    def find_res(self, X, width=4, roi_perc=0.03):
+        '''
+        Automatically find reasonable peaks in a spectrum and return one.
+        This can be used to randomly find a peak to perturb via resolution.
+        Uses BEADS to identify peaks in a spectrum.
+        Note that both BEADS and scipy.signals.find_peaks can be very unstable
+        and thus this is not always reliable. It is recommended to check for
+        reasonable peaks or fits/augmentations after using this method.
+
+        Inputs:
+        X: array-like; 1D spectrum array of count-rates
+        width: int; minimum channel width for an identified peak
+            (see scipy.signals.find_peaks for more information)
+        roi_perc: float; percent of total channels in X to have on each
+            shoulder of an ROI.
+        '''
+
+        beads_results = beads(X, **self.BEADS_PARAMS)
+        # np.clip(min=0) ensures no negative counts when finding peaks
+        peaks, _ = find_peaks(beads_results[0].clip(min=0),
+                              width=width,
+                              rel_height=0.5)
+        choice = np.random.choice(peaks, 1)
+        w = int(len(X)*roi_perc)
+        roi = [int(max(choice-w, 0)), int(min(choice+w, len(X)-1))]
+        return roi
 
     def resolution(self, roi, X, multiplier=1.5, conserve=True):
         '''
@@ -425,7 +511,7 @@ class DANSE:
         can affect the shape of the resulting peak.
 
         Inputs:
-        roi: tuple; (min, max) bin/index values for region of interest - used
+        roi: list; (min, max) bin/index values for region of interest - used
             to index from data, X
         X: array-like; 1D spectrum array of count-rates
         multiplier: float; scaler to manipulate FWHM by. Greater than 1
@@ -434,8 +520,13 @@ class DANSE:
             augmentation, meaning a taller peak for multipler<1 & vice versa
         '''
 
+        if multiplier <= 0:
+            raise ValueError('{} must be positive.'.format(multiplier))
+
         # avoid overwriting original data
         X = X.copy()
+        if multiplier < 0:
+            multiplier = 1/abs(multiplier)
 
         # [amp, mu, sigma, m, b]
         coeff = self._fit(roi, X)
@@ -453,10 +544,10 @@ class DANSE:
         # 6-sigma ensures the entire Gaussian distribution is captured
         # NOTE: this is unstable, new peaks (and the background/baseline)
         # can overwrite other spectral features, should it be removed?
-        if 4*new_sigma >= roi[1]-roi[0]:
+        if 2*new_sigma >= roi[1]-roi[0]:
             # maximum expansion cannot be more than length of spectrum
-            roi[0] = max(0, roi[0]-int(2*new_sigma))
-            roi[1] = min(X.shape[0]-1, roi[1]+int(2*new_sigma))
+            roi[0] = max(0, roi[0]-int(new_sigma))
+            roi[1] = min(X.shape[0]-1, roi[1]+int(new_sigma))
 
         ch = np.arange(roi[0], roi[1])
         peak = self._lingauss(ch,
@@ -467,13 +558,14 @@ class DANSE:
                               b=coeff[4])
         if conserve:
             # only counts from background
-            background = coeff[3]*ch + coeff[4]
+            background = (coeff[3]*ch + coeff[4]).clip(min=0)
             # only counts from old peak
             old_cts = (X[ch] - background).clip(min=0)
             # only counts from new peak
             new_cts = (peak - background).clip(min=0)
             # scale new peak to conserve original counts
-            peak = (new_cts*(np.sum(old_cts)/np.sum(new_cts))) + background
+            if np.sum(new_cts) > 0:
+                peak = (new_cts*(np.sum(old_cts)/np.sum(new_cts))) + background
 
         # normalize to conserve relative count-rate
         # NOTE: this is realistic physically, but is it necesary?
@@ -481,7 +573,8 @@ class DANSE:
 
         # add noise to the otherwise smooth transformation
         # .clip() necessary so counts are not negative
-        peak = self.resample(peak.clip(min=0))
+        # .astype(float) avoids ValueError: lam value too large
+        peak = self.resample(peak.clip(min=0).astype(np.float64))
         X[roi[0]:roi[1]] = peak
         return X
 
@@ -680,4 +773,4 @@ class DANSE:
                               width)
             return new_ct, new_b
         else:
-            return new_ct
+            return new_ct, bins
