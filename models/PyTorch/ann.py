@@ -9,7 +9,6 @@ from models.PyTorch.critic import MSELoss
 
 import torch
 from torch import nn
-import torch.nn.functional as F
 
 
 class EarlyStopper:
