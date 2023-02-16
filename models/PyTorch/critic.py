@@ -24,9 +24,12 @@ class LinearCritic(nn.Module):
 
     def forward(self, h1, h2):
         z1, z2 = self.project(h1), self.project(h2)
-        sim11 = self.cossim(z1.unsqueeze(-2), z1.unsqueeze(-3)) / self.temperature
-        sim22 = self.cossim(z2.unsqueeze(-2), z2.unsqueeze(-3)) / self.temperature
-        sim12 = self.cossim(z1.unsqueeze(-2), z2.unsqueeze(-3)) / self.temperature
+        sim11 = self.cossim(z1.unsqueeze(-2),
+                            z1.unsqueeze(-3)) / self.temperature
+        sim22 = self.cossim(z2.unsqueeze(-2),
+                            z2.unsqueeze(-3)) / self.temperature
+        sim12 = self.cossim(z1.unsqueeze(-2),
+                            z2.unsqueeze(-3)) / self.temperature
         d = sim12.shape[-1]
         sim11[..., range(d), range(d)] = float('-inf')
         sim22[..., range(d), range(d)] = float('-inf')

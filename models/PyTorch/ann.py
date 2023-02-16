@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Union, Tuple
 
 import numpy as np
 import pandas as pd
@@ -49,8 +49,9 @@ class EarlyStopper:
             self.counter += 1
         return self.counter >= self.patience
 
+
 class LinearNN(nn.Module):
-    def __init__(self, dim: int, mid: int, n_layers: int = 1,
+    def __init__(self, dim: int, mid: Union[int, list], n_layers: int = 1,
                  dropout_rate: float = 1., n_epochs: int = 1000,
                  mid_bias: bool = True, out_bias: bool = False,
                  criterion: nn.Module = MSELoss(), n_classes: int = None):
@@ -60,15 +61,22 @@ class LinearNN(nn.Module):
         self.p = dropout_rate
         self.n_epochs = n_epochs
         self.device = torch.device('cpu')
-        layers = [nn.Sequential(nn.Linear(dim, mid, bias=mid_bias),
+        if isinstance(mid, list) and (len(mid) != n_layers):
+            raise ValueError('Specified layer architecture (mid)'
+                             + 'should match n_layers')
+        if isinstance(mid, int):
+            np.full(n_layers, mid)
+        layers = [nn.Sequential(nn.Linear(dim, mid[0], bias=mid_bias),
                                 activation())]
 
-        for _ in range(n_layers-1):
-            layers.append(nn.Sequential(nn.Linear(mid, mid, bias=mid_bias),
+        for i in range(n_layers-1):
+            layers.append(nn.Sequential(nn.Linear(mid[i],
+                                                  mid[i+1],
+                                                  bias=mid_bias),
                                         activation()))
         self.m = nn.ModuleList(layers)
         if n_classes is not None:
-            self.out = nn.Linear(mid, n_classes, bias=out_bias)
+            self.out = nn.Linear(mid[-1], n_classes, bias=out_bias)
         else:
             self.out = None
         # self.var = nn.Linear(mid, 1, bias=out_bias)
@@ -160,7 +168,8 @@ class LinearNN(nn.Module):
                 raise RuntimeError('NaN or Inf in training loss,\
                                     cannot recover. Exiting.')
             if t % 200 == 0:
-                log = (f'Epoch: {t} - TL: {np.mean(t_losses):.2e}, VL: {np.mean(v_losses):.2e}, '
+                log = (f'Epoch: {t} - TL: {np.mean(t_losses):.2e},'
+                       + ' VL: {np.mean(v_losses):.2e}, '
                        f'out: {out[:5]} and y: {y[:5]}')
                 # f'tEU: {np.mean(t_ep):.2e}, vEU: {np.mean(v_ep):.2e}, '
                 # f'tAU: {np.mean(t_al):.2e}, vAU: {np.mean(v_al):.2e}, '
