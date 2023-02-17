@@ -29,13 +29,14 @@ SOFTWARE.
 
 import json
 
-import torchvision
-import torchvision.transforms as transforms
+# import torchvision
+# import torchvision.transforms as transforms
 
-from augmentation import ColourDistortion
+# from augmentation import ColourDistortion
 from dataset import *
-from models import *
+# from models import *
 from scripts import transforms
+from sklearn.model_selection import train_test_split
 
 
 def add_indices(dataset_cls):
@@ -47,14 +48,14 @@ def add_indices(dataset_cls):
     return NewClass
 
 
-def get_datasets(dataset, dset_fpath, bckg_fpath, augment_clf_train=False, add_indices_to_data=False, num_positive=None):
+def get_datasets(dataset, dset_fpath, bckg_fpath, add_indices_to_data=False):# , augment_clf_train=False, num_positive=None):
 
-    CACHED_MEAN_STD = {
-        'cifar10': ((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        'cifar100': ((0.5071, 0.4865, 0.4409), (0.2009, 0.1984, 0.2023)),
-        'stl10': ((0.4409, 0.4279, 0.3868), (0.2309, 0.2262, 0.2237)),
-        'imagenet': ((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-    }
+    # CACHED_MEAN_STD = {
+    #     'cifar10': ((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    #     'cifar100': ((0.5071, 0.4865, 0.4409), (0.2009, 0.1984, 0.2023)),
+    #     'stl10': ((0.4409, 0.4279, 0.3868), (0.2309, 0.2262, 0.2237)),
+    #     'imagenet': ((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+    # }
 
     # PATHS = {
     #     'minos': '/data/minos/',
@@ -72,14 +73,14 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, augment_clf_train=False, add_i
     # root = PATHS[dataset]
 
     # Data
-    if dataset == 'minos':
-        img_size = 1000
-    elif dataset == 'stl10':
-        img_size = 96
-    elif dataset == 'imagenet':
-        img_size = 224
-    else:
-        img_size = 32
+    # if dataset == 'minos':
+    #     img_size = 1000
+    # elif dataset == 'stl10':
+    #     img_size = 96
+    # elif dataset == 'imagenet':
+    #     img_size = 224
+    # else:
+    #     img_size = 32
 
     # transform_train = transforms.Compose([
     #     transforms.RandomResizedCrop(img_size, interpolation=Image.BICUBIC),
@@ -98,16 +99,16 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, augment_clf_train=False, add_i
         transforms.GainShift()
     ]
 
-    if dataset == 'minos':
-        transform_test = [
-            transforms.Background(bckg_dir=bckg_fpath, mode='beads'),
-            transforms.Resample(),
-            transforms.Sig2Bckg(bckg_dir=bckg_fpath, mode='beads', r=(0.5, 1.5)),
-            transforms.Nuclear(binE=3),
-            transforms.Resolution(multiplier=(0.5, 1.5)),
-            transforms.Mask(),
-            transforms.GainShift()
-        ]
+    # if dataset == 'minos':
+    #     transform_test = [
+    #         transforms.Background(bckg_dir=bckg_fpath, mode='beads'),
+    #         transforms.Resample(),
+    #         transforms.Sig2Bckg(bckg_dir=bckg_fpath, mode='beads', r=(0.5, 1.5)),
+    #         transforms.Nuclear(binE=3),
+    #         transforms.Resolution(multiplier=(0.5, 1.5)),
+    #         transforms.Mask(),
+    #         transforms.GainShift()
+    #     ]
     # elif dataset == 'imagenet':
     #     transform_test = transforms.Compose([
     #         transforms.Resize(256),
@@ -128,14 +129,21 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, augment_clf_train=False, add_i
     #         transforms.ToTensor(),
     #         transforms.Normalize(*CACHED_MEAN_STD[dataset]),
     #     ])
-    else:
-        transform_clftrain = transform_test
+    # else:
+    #     transform_clftrain = transform_test
 
     if dataset == 'minos':
+        data = pd.read_hdf(dset_fpath, key='data')
+        targets = data['event'].values
+        data = data[np.arange(1000)].values
+        Xtr, Xval, ytr, yval = train_test_split(data, targets, test_size=0.33)
+
         if add_indices_to_data:
-            dset = add_indices(MINOSBiaugment(dset_fpath, transforms=transform_train))
+            tr_dset = add_indices(MINOSBiaugment(Xtr, ytr, transforms=transform_train))
+            val_dset = add_indices(DataOrganizer(Xval, yval))
         else:
-            dset = MINOSBiaugment(dset_fpath, transforms=transform_train)
+            tr_dset = MINOSBiaugment(Xtr, ytr, transforms=transform_train)
+            val_dset = DataOrganizer(Xval, yval)
     # elif dataset == 'cifar100':
     #     if add_indices_to_data:
     #         dset = add_indices(torchvision.datasets.CIFAR100)
@@ -194,4 +202,4 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, augment_clf_train=False, add_i
         raise ValueError("Bad dataset value: {}".format(dataset))
 
     # return trainset, testset, clftrainset, num_classes, stem
-    return dset
+    return tr_dset, val_dset

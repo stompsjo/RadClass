@@ -79,6 +79,7 @@ class LinearNN(nn.Module):
             self.out = nn.Linear(mid[-1], n_classes, bias=out_bias)
         else:
             self.out = None
+            self.representation_dim = mid[-1]
         # self.var = nn.Linear(mid, 1, bias=out_bias)
 
         optimizer_kwargs = dict(lr=0.001, betas=(0.8, 0.99), weight_decay=1e-6)

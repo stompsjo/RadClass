@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+import torch
+from torch.utils.data import Dataset
 
 
 class DataOrganizer(Dataset):
@@ -11,14 +13,16 @@ class DataOrganizer(Dataset):
         return self.x.size(0)
 
     def __getitem__(self, idx):
-        return (self.x[idx], self.y[idx])
+        return self.x[idx], self.y[idx], idx
 
 
 class MINOSBiaugment(Dataset):
-    def __init__(self, data_fpath, transforms):
-        self.data = pd.read_hdf(data_fpath, key='data')
-        self.targets = self.data['event']
-        self.data = self.data[np.arange(1000)]
+    def __init__(self, X, y, transforms):
+        # self.data = pd.read_hdf(data_fpath, key='data')
+        # self.targets = torch.from_numpy(self.data['event'].values)
+        # self.data = torch.from_numpy(self.data[np.arange(1000)].values)
+        self.data = torch.FloatTensor(X.copy())
+        self.targets = torch.FloatTensor(y.copy())
         self.transforms = transforms
 
     def __len__(self):
