@@ -39,7 +39,7 @@ class MINOSBiaugment(Dataset):
 
         if self.transforms is not None:
             aug1, aug2 = np.random.choice(self.transforms, size=2, replace=False)
-            spec1 = aug1(spec)
-            spec2 = aug2(spec)
+            spec1 = torch.FloatTensor(aug1(spec))
+            spec2 = torch.FloatTensor(aug2(spec))
 
         return (spec1, spec2), target, index
