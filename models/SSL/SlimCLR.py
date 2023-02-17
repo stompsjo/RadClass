@@ -36,14 +36,14 @@ import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.optim as optim
-from torchlars import LARS
+# from torchlars import LARS
 from tqdm import tqdm
 
-from configs import get_datasets
-from critic import LinearCritic
-from evaluate import save_checkpoint, encode_train_set, train_clf, test
+from scripts.configs import get_datasets
+from models.PyTorch.critic import LinearCritic
+from scripts.evaluate import save_checkpoint, encode_train_set, train_clf, test
 from models import *
-from scheduler import CosineAnnealingWithLinearRampLR
+from scripts.scheduler import CosineAnnealingWithLinearRampLR
 
 from models.PyTorch.ann import LinearNN
 
@@ -54,13 +54,13 @@ parser.add_argument('--resume', '-r', type=str, default='', help='resume from ch
 parser.add_argument('--dataset', '-d', type=str, default='minos', help='dataset keyword',
                     choices=['minos', 'cifar10', 'cifar100', 'stl10', 'imagenet'])
 parser.add_argument('--dfpath', '-p', type=str, help='filepath for dataset')
-parser.add_argument('--bfpath', 'f', type=str, help='filepath for background library augmentations')
+parser.add_argument('--bfpath', '-f', type=str, help='filepath for background library augmentations')
 parser.add_argument('--temperature', type=float, default=0.5, help='InfoNCE temperature')
 parser.add_argument("--batch-size", type=int, default=512, help='Training batch size')
 parser.add_argument("--num-epochs", type=int, default=100, help='Number of training epochs')
 parser.add_argument("--cosine-anneal", action='store_true', help="Use cosine annealing on the learning rate")
-parser.add_argument("--arch", type=str, default='resnet50', help='Encoder architecture',
-                    choices=['resnet18', 'resnet34', 'resnet50'])
+parser.add_argument("--arch", type=str, default='minos', help='Encoder architecture',
+                    choices=['minos', 'resnet18', 'resnet34', 'resnet50'])
 parser.add_argument("--num-workers", type=int, default=2, help='Number of threads for data loaders')
 parser.add_argument("--test-freq", type=int, default=10, help='Frequency to fit a linear clf with L-BFGS for testing'
                                                               'Not appropriate for large datasets. Set 0 to avoid '
@@ -99,13 +99,13 @@ print('==> Building model..')
 ##############################################################
 # Encoder
 ##############################################################
-if args.arch == 'resnet18':
-    net = ResNet18(stem=stem)
-elif args.arch == 'resnet34':
-    net = ResNet34(stem=stem)
-elif args.arch == 'resnet50':
-    net = ResNet50(stem=stem)
-elif args.arch == 'minos':
+# if args.arch == 'resnet18':
+#     net = ResNet18(stem=stem)
+# elif args.arch == 'resnet34':
+#     net = ResNet34(stem=stem)
+# elif args.arch == 'resnet50':
+#     net = ResNet50(stem=stem)
+if args.arch == 'minos':
     net = LinearNN(dim=args.in_dim, mid=args.mid,
                    n_layers=args.n_layers, dropout_rate=1.,
                    n_epochs=args.num_epochs, mid_bias=True,
@@ -141,7 +141,8 @@ base_optimizer = optim.SGD(list(net.parameters()) + list(critic.parameters()), l
                            momentum=args.momentum)
 if args.cosine_anneal:
     scheduler = CosineAnnealingWithLinearRampLR(base_optimizer, args.num_epochs)
-encoder_optimizer = LARS(base_optimizer, trust_coef=1e-3)
+# encoder_optimizer = LARS(base_optimizer, trust_coef=1e-3)
+encoder_optimizer = base_optimizer
 
 
 # Training

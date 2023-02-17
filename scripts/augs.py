@@ -105,9 +105,9 @@ class DANSE:
             X = (X-bckg).clip(min=0)
 
         # estimate a background/baseline if multiple spectra are provided
-        if mode == 'beads':
-            warnings.warn('mode == {} assumes X_bckg has already \
-                undergone BEADS estimation.'.format(mode))
+        # if mode == 'beads':
+        #     warnings.warn('mode == {} assumes X_bckg has already \
+        #         undergone BEADS estimation.'.format(mode))
         if X_bckg.ndim > 1 and mode != 'beads':
             X_bckg = self._estimate(X_bckg, mode)
 
@@ -190,7 +190,7 @@ class DANSE:
         elif mode not in modes:
             raise ValueError('Input mode not supported.')
 
-        if r <= 0:
+        if r[0] <= 0 or r[1] <= 0:
             raise ValueError('{} must be positive.'.format(r))
 
         # subtract a background estimation if it wasn't done prior
@@ -206,18 +206,18 @@ class DANSE:
             X = (X-bckg).clip(min=0)
 
         # estimate a background/baseline if multiple spectra are provided
-        if mode == 'beads':
-            warnings.warn('mode == {} assumes X_bckg has already \
-                undergone BEADS estimation.'.format(mode))
+        # if mode == 'beads':
+        #     warnings.warn('mode == {} assumes X_bckg has already \
+        #         undergone BEADS estimation.'.format(mode))
         if X_bckg.ndim > 1 and mode != 'beads':
             X_bckg = self._estimate(X_bckg, mode)
 
         # even random choice between upscaling and downscaling
-        r = loguniform(r[0], r[1], size=1)
+        r = loguniform.rvs(r[0], r[1], size=1)
         X *= r
 
         # ensure no negative counts
-        return (X + X_bckg).clip(min=0), r
+        return (X + X_bckg).clip(min=0)
 
     def _gauss(self, x, amp, mu, sigma):
         '''

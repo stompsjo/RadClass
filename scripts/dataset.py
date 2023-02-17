@@ -13,7 +13,7 @@ class DataOrganizer(Dataset):
         return self.x.size(0)
 
     def __getitem__(self, idx):
-        return self.x[idx], self.y[idx], idx
+        return self.x[idx], self.y[idx]
 
 
 class MINOSBiaugment(Dataset):
@@ -35,9 +35,9 @@ class MINOSBiaugment(Dataset):
         Returns:
             tuple: (image, target) where target is index of the target class.
         """
-        spec, target = self.data.iloc[index].to_numpy().astype(float), self.targets.iloc[index]
+        spec, target = self.data[index], self.targets[index]
 
-        if self.transform is not None:
+        if self.transforms is not None:
             aug1, aug2 = np.random.choice(self.transforms, size=2, replace=False)
             spec1 = aug1(spec)
             spec2 = aug2(spec)

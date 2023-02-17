@@ -13,11 +13,11 @@ class Background(torch.nn.Module):
         self.mode = mode
         # bckg_man = pd.read_hdf('/home/u9f/Documents/manual_background_spectra.hdf5', key='data')
         # bckg_bds = pd.read_hdf('/home/u9f/Documents/beads_background_spectra.hdf', key='data')
-        self.bckg = pd.read_hdf(bckg_dir, mode='beads')
+        self.bckg = pd.read_hdf(bckg_dir, key='data')
         self.bckg_dir = bckg_dir
 
     def forward(self, X):
-        X = X.copy()
+        X = X.detach().numpy()
         bckg_idx = np.random.choice(self.bckg.shape[0])
         ibckg = self.bckg.iloc[bckg_idx][np.arange(1000)].to_numpy().astype(float)
         auger = DANSE()
@@ -32,7 +32,7 @@ class Resample(torch.nn.Module):
         super().__init__()
 
     def forward(self, X):
-        X = X.copy()
+        X = X.detach().numpy()
         auger = DANSE()
         return auger.resample(X)
 
@@ -48,12 +48,12 @@ class Sig2Bckg(torch.nn.Module):
         self.mode = mode
         # bckg_man = pd.read_hdf('/home/u9f/Documents/manual_background_spectra.hdf5', key='data')
         # bckg_bds = pd.read_hdf('/home/u9f/Documents/beads_background_spectra.hdf', key='data')
-        self.bckg = pd.read_hdf(bckg_dir, mode='beads')
+        self.bckg = pd.read_hdf(bckg_dir, key='data')
         self.bckg_dir = bckg_dir
         self.r = r
 
     def forward(self, X):
-        X = X.copy()
+        X = X.detach().numpy()
         bckg_idx = np.random.choice(self.bckg.shape[0])
         ibckg = self.bckg.iloc[bckg_idx][np.arange(1000)].to_numpy().astype(float)
         auger = DANSE()
@@ -70,9 +70,9 @@ class Nuclear(torch.nn.Module):
         self.binE = binE
 
     def forward(self, X):
-        X = X.copy()
+        X = X.detach().numpy()
         nuclides = {'K40Th232': [1460, 2614], 'U238': [609], 'Bi214': [1764, 2204], 'Pb214': [295, 352], 'Ar41': [1294]}
-        nkey = np.random.choice(np.array(list(nuclides.keys)))
+        nkey = np.random.choice(np.array(list(nuclides.keys())))
         for e in nuclides[nkey]:
             chE = e/self.binE
             roi = [int(max(chE-int(len(X)*0.01), 0)), int(min(chE+int(len(X)*0.01), len(X)-1))]
@@ -96,18 +96,22 @@ class Resolution(torch.nn.Module):
         self.multiplier = multiplier
 
     def forward(self, X):
-        X = X.copy()
+        X = X.detach().numpy()
         auger = DANSE()
-        sucess = False
-        while not sucess:
-            roi = auger.find_res(X)
-            multiplier = loguniform(multiplier[0], multiplier[1], size=1)
+        success = False
+        while not success:
+            try:
+                roi = auger.find_res(X)
+            except (RuntimeError, IndexError) as e: # ignore unsuccessful peak fits
+                success = False
+                continue
+            multiplier = loguniform.rvs(self.multiplier[0], self.multiplier[1], size=1)
             conserve = np.random.choice([True, False])
             try:
                 X = auger.resolution(roi, X.copy(), multiplier=multiplier, conserve=conserve)
                 success = True
             except (RuntimeError, IndexError) as e: # ignore unsuccessful peak fits
-                sucess = False
+                success = False
                 continue
         return X
 
@@ -120,7 +124,7 @@ class Mask(torch.nn.Module):
         super().__init__()
 
     def forward(self, X):
-        X = X.copy()
+        X = X.detach().numpy()
         auger = DANSE()
         return auger.mask(X, mode='block', block=(0, np.random.randint(20, 100)))
 
@@ -133,12 +137,15 @@ class GainShift(torch.nn.Module):
         super().__init__()
 
     def forward(self, X):
-        X = X.copy()
+        X = X.detach().numpy()
         auger = DANSE()
 
         k = np.random.randint(-5, 5)
         lam = np.random.uniform(-5, 5)
-        return auger.gain_shift(X, bins=None, lam=lam, k=k, mode='resample')
+        new, _ = auger.gain_shift(X, bins=None, lam=lam, k=k, mode='resample')
+        if len(new) < len(X):
+            new = np.append(new, np.repeat(0, 1000-len(new)))
+        return new[:len(X)]
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}"

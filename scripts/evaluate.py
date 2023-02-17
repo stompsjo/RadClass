@@ -5,10 +5,28 @@ Largely adapted from a PyTorch conversion of SimCLR by Adam Foster.
 More information found here: https://github.com/ae-foster/pytorch-simclr
 '''
 
+import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
+
+
+def save_checkpoint(net, clf, critic, epoch, args, script_name):
+    # Save checkpoint.
+    print('Saving..')
+    state = {
+        'net': net.state_dict(),
+        'clf': clf.state_dict(),
+        'critic': critic.state_dict(),
+        'epoch': epoch,
+        'args': vars(args),
+        'script': script_name
+    }
+    if not os.path.isdir('checkpoint'):
+        os.mkdir('checkpoint')
+    destination = os.path.join('./checkpoint', args.filename)
+    torch.save(state, destination)
 
 
 def encode_train_set(clftrainloader, device, net):

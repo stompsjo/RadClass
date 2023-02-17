@@ -65,7 +65,7 @@ class LinearNN(nn.Module):
             raise ValueError('Specified layer architecture (mid)'
                              + 'should match n_layers')
         if isinstance(mid, int):
-            np.full(n_layers, mid)
+            mid = np.full(n_layers, mid)
         layers = [nn.Sequential(nn.Linear(dim, mid[0], bias=mid_bias),
                                 activation())]
 

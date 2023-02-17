@@ -33,10 +33,12 @@ import json
 # import torchvision.transforms as transforms
 
 # from augmentation import ColourDistortion
-from dataset import *
+from scripts.dataset import *
 # from models import *
 from scripts import transforms
 from sklearn.model_selection import train_test_split
+from data.specTools import read_h_file
+import numpy as np
 
 
 def add_indices(dataset_cls):
@@ -133,9 +135,10 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, add_indices_to_data=False):# ,
     #     transform_clftrain = transform_test
 
     if dataset == 'minos':
-        data = pd.read_hdf(dset_fpath, key='data')
-        targets = data['event'].values
-        data = data[np.arange(1000)].values
+        data = read_h_file(dset_fpath, 60, 60)
+        events = np.unique(data['event'].values)
+        targets = data['event'].replace(events, np.arange(len(events)), inplace=False).values
+        data = data.to_numpy()[:, np.arange(1000)].astype(float)
         Xtr, Xval, ytr, yval = train_test_split(data, targets, test_size=0.33)
 
         if add_indices_to_data:

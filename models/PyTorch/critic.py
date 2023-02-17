@@ -50,7 +50,7 @@ import torch
 from torch import nn
 import numpy as np
 import torch.nn.functional as F
-import diffdist
+# import diffdist
 import torch.distributed as dist
 
 
@@ -148,8 +148,8 @@ class NTXent(nn.Module):
 import torch.nn as nn
 import torchvision
 
-from simclr.modules.resnet_hacks import modify_resnet_model
-from simclr.modules.identity import Identity
+# from simclr.modules.resnet_hacks import modify_resnet_model
+# from simclr.modules.identity import Identity
 
 
 class SimCLR(nn.Module):
