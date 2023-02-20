@@ -140,6 +140,8 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, add_indices_to_data=False):# ,
         targets = data['event'].replace(events, np.arange(len(events)), inplace=False).values
         data = data.to_numpy()[:, np.arange(1000)].astype(float)
         Xtr, Xval, ytr, yval = train_test_split(data, targets, test_size=0.33)
+        print(f'\ttraining instances = {Xtr.shape[0]}')
+        print(f'\tvalidation instances = {Xval.shape[0]}')
 
         if add_indices_to_data:
             tr_dset = add_indices(MINOSBiaugment(Xtr, ytr, transforms=transform_train))

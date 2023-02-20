@@ -82,7 +82,7 @@ clf = None
 
 print('==> Preparing data..')
 # trainset, testset, clftrainset, num_classes, stem = get_datasets(args.dataset, args.dfpath, args.bfpath)
-num_classes = 2
+num_classes = 7
 trainset, valset = get_datasets(args.dataset, args.dfpath, args.bfpath)
 
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=True,

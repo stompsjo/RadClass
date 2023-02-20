@@ -70,6 +70,7 @@ def train_clf(X, y, representation_dim, num_classes, device, reg_weight=1e-3):
 
             _, predicted = raw_scores.max(1)
             correct = predicted.eq(y).sum().item()
+            print(f'\tcorrect ({correct}) from predicted: {predicted}')
 
             t.set_description('Loss: %.3f | Train Acc: %.3f%% ' % (loss, 100. * correct / y.shape[0]))
 
