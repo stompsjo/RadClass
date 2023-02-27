@@ -145,10 +145,10 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, add_indices_to_data=False):# ,
 
         if add_indices_to_data:
             tr_dset = add_indices(MINOSBiaugment(Xtr, ytr, transforms=transform_train))
-            val_dset = add_indices(DataOrganizer(Xval, yval))
+            val_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std))
         else:
             tr_dset = MINOSBiaugment(Xtr, ytr, transforms=transform_train)
-            val_dset = DataOrganizer(Xval, yval)
+            val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std)
     # elif dataset == 'cifar100':
     #     if add_indices_to_data:
     #         dset = add_indices(torchvision.datasets.CIFAR100)

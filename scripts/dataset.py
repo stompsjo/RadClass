@@ -5,12 +5,12 @@ from torch.utils.data import Dataset
 
 
 class DataOrganizer(Dataset):
-    def __init__(self, X, y):
+    def __init__(self, X, y, mean, std):
         self.data = torch.FloatTensor(X.copy())
         self.targets = torch.LongTensor(y.copy())
 
-        # self.mu = torch.mean(self.data, 0)
-        # self.std = torch.std(self.data, 0)
+        self.mean = mean
+        self.std = std
 
     def __len__(self):
         return self.data.size(0)
@@ -18,7 +18,8 @@ class DataOrganizer(Dataset):
     def __getitem__(self, idx):
         x = self.data[idx]
         y = self.targets[idx]
-        # x -= self.mu
+        x -= self.mean
+        x = torch.where(self.std == 0., 0., x/self.std)
         # x /= self.std
 
         return x, y
@@ -33,8 +34,9 @@ class MINOSBiaugment(Dataset):
         self.targets = torch.LongTensor(y.copy())
         self.transforms = transforms
 
-        # self.mu = torch.mean(self.data, 0)
-        # self.std = torch.std(self.data, 0)
+        self.mean = torch.mean(self.data, axis=0)
+        self.std = torch.std(self.data, axis=0)
+        # print(f'mean={self.mean}\nstd={self.std}')
 
     def __len__(self):
         return self.data.size(0)
@@ -53,9 +55,14 @@ class MINOSBiaugment(Dataset):
             spec1 = torch.FloatTensor(aug1(spec))
             spec2 = torch.FloatTensor(aug2(spec))
 
-        # spec1 -= self.mu
+        # print(f'spec1 shape={spec1.shape}, mean shape={self.mean.shape}, and std shape={self.std.shape}')
+        spec1 -= self.mean
+        spec1 = torch.where(self.std == 0., 0., spec1/self.std)
         # spec1 /= self.std
-        # spec2 -= self.mu
+        spec2 -= self.mean
+        spec2 = torch.where(self.std == 0., 0., spec2/self.std)
         # spec2 /= self.std
+
+        # print(f'spec1={spec1[:10]}\nspec2={spec2[:10]}')
 
         return (spec1, spec2), target, index

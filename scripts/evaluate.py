@@ -50,13 +50,14 @@ def encode_train_set(clftrainloader, device, net):
 
 def train_clf(X, y, representation_dim, num_classes, device, reg_weight=1e-3):
     print('\nL2 Regularization weight: %g' % reg_weight)
+    print(f'\tX: min={X.min()} and max={X.max()}')
 
     criterion = nn.CrossEntropyLoss()
     n_lbfgs_steps = 500
 
     # Should be reset after each epoch for a completely independent evaluation
     clf = nn.Linear(representation_dim, num_classes).to(device)
-    clf_optimizer = optim.LBFGS(clf.parameters())
+    clf_optimizer = optim.LBFGS(clf.parameters(), lr=1e-2)
     clf.train()
 
     t = tqdm(range(n_lbfgs_steps), desc='Loss: **** | Train Acc: ****% ', bar_format='{desc}{bar}{r_bar}')
@@ -70,7 +71,9 @@ def train_clf(X, y, representation_dim, num_classes, device, reg_weight=1e-3):
 
             _, predicted = raw_scores.max(1)
             correct = predicted.eq(y).sum().item()
-            print(f'\tcorrect ({correct}) from predicted: {predicted}')
+            # print(f'X={X[0]}\nraw_scores={raw_scores[0]}')
+            # print(f'y={y}')
+            # print(f'\tcorrect ({correct}) from predicted: {predicted}')
 
             t.set_description('Loss: %.3f | Train Acc: %.3f%% ' % (loss, 100. * correct / y.shape[0]))
 

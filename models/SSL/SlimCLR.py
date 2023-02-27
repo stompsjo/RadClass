@@ -113,6 +113,7 @@ if args.arch == 'minos':
 else:
     raise ValueError("Bad architecture specification")
 net = net.to(device)
+print(f'net dimensions={net.representation_dim}')
 
 ##############################################################
 # Critic
