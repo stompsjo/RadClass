@@ -1,4 +1,6 @@
-from scripts.augs import DANSE
+import sys
+sys.path.append('/mnt/palpatine/u9f/RadClass/scripts/')
+from augs import DANSE
 import numpy as np
 import pandas as pd
 from scipy.stats import loguniform
@@ -11,8 +13,8 @@ class Background(torch.nn.Module):
         # _log_api_usage_once(self)
 
         self.mode = mode
-        # bckg_man = pd.read_hdf('/home/u9f/Documents/manual_background_spectra.hdf5', key='data')
-        # bckg_bds = pd.read_hdf('/home/u9f/Documents/beads_background_spectra.hdf', key='data')
+        # bckg_man = pd.read_hdf('/mnt/palpatine/u9f/Documents/manual_background_spectra.hdf5', key='data')
+        # bckg_bds = pd.read_hdf('/mnt/palpatine/u9f/Documents/beads_background_spectra.hdf', key='data')
         self.bckg = pd.read_hdf(bckg_dir, key='data')
         self.bckg_dir = bckg_dir
 
@@ -34,7 +36,7 @@ class Resample(torch.nn.Module):
     def forward(self, X):
         X = X.detach().numpy()
         auger = DANSE()
-        return auger.resample(X)
+        return auger.resample(np.absolute(X))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}"
@@ -46,8 +48,8 @@ class Sig2Bckg(torch.nn.Module):
         # _log_api_usage_once(self)
 
         self.mode = mode
-        # bckg_man = pd.read_hdf('/home/u9f/Documents/manual_background_spectra.hdf5', key='data')
-        # bckg_bds = pd.read_hdf('/home/u9f/Documents/beads_background_spectra.hdf', key='data')
+        # bckg_man = pd.read_hdf('/mnt/palpatine/u9f/Documents/manual_background_spectra.hdf5', key='data')
+        # bckg_bds = pd.read_hdf('/mnt/palpatine/u9f/Documents/beads_background_spectra.hdf', key='data')
         self.bckg = pd.read_hdf(bckg_dir, key='data')
         self.bckg_dir = bckg_dir
         self.r = r
@@ -79,7 +81,7 @@ class Nuclear(torch.nn.Module):
             auger = DANSE()
             try:
                 X = auger.nuclear(roi, X, escape=False, binE=self.binE, subtract=False)
-            except (RuntimeError, IndexError) as e: # ignore unsuccessful peak fits
+            except (RuntimeError, IndexError, ValueError) as e:  # , np.core._exceptions._ArrayMemoryError) as e: # ignore unsuccessful peak fits
                 continue
         return X
 
@@ -99,10 +101,10 @@ class Resolution(torch.nn.Module):
         X = X.detach().numpy()
         auger = DANSE()
         success = False
-        while not success:
+        for i in range(100):
             try:
                 roi = auger.find_res(X)
-            except (RuntimeError, IndexError) as e: # ignore unsuccessful peak fits
+            except (RuntimeError, IndexError, ValueError) as e: # ignore unsuccessful peak fits
                 success = False
                 continue
             multiplier = loguniform.rvs(self.multiplier[0], self.multiplier[1], size=1)
@@ -110,9 +112,13 @@ class Resolution(torch.nn.Module):
             try:
                 X = auger.resolution(roi, X.copy(), multiplier=multiplier, conserve=conserve)
                 success = True
-            except (RuntimeError, IndexError) as e: # ignore unsuccessful peak fits
+            except (RuntimeError, IndexError, ValueError) as e: # ignore unsuccessful peak fits
                 success = False
                 continue
+            if success:
+                break
+            if i == 99:
+                print(f'NOTE: resolution aug failed...')
         return X
 
     def __repr__(self) -> str:

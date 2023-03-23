@@ -404,13 +404,17 @@ class DANSE:
         slope_sigma = sigma/fit_peak
         # slope_counts should be negative because fit_peak < bins
         slope_counts = np.sqrt(2*np.pi) * amp / (fit_peak - bins)
-        max_counts = -slope_counts * bins
+        # avoid bad fits from adding an exponential amount of counts
+        max_counts = min(-slope_counts * bins,
+                         np.sqrt(np.sum(nX)))
 
         # insert peak at input energy
         if not escape:
             # approximate width and counts from relationship estimated above
             sigma_peak = slope_sigma * b
-            cts_peak = max_counts - (slope_counts * b)
+            # avoid bad fits from adding an exponential amount of counts
+            cts_peak = min(np.absolute(max_counts - (slope_counts * b)),
+                           np.sqrt(np.sum(nX)))
             # overwrite if user input is given
             if width is not None:
                 sigma_peak = width

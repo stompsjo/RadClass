@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
+from torchmetrics import ConfusionMatrix
 
 
 def save_checkpoint(net, clf, critic, epoch, args, script_name):
@@ -84,13 +85,19 @@ def train_clf(X, y, representation_dim, num_classes, device, reg_weight=1e-3):
     return clf
 
 
-def test(testloader, device, net, clf):
+def test(testloader, device, net, clf, n_classes=2):
     criterion = nn.CrossEntropyLoss()
     net.eval()
     clf.eval()
     test_clf_loss = 0
     correct = 0
     total = 0
+    if n_classes > 2:
+        confmat = ConfusionMatrix(task='multiclass', num_classes=n_classes)
+        cmat = torch.zeros(n_classes, n_classes)
+    else:
+        confmat = ConfusionMatrix(task='binary', num_classes=n_classes)
+        cmat = torch.zeros(n_classes, n_classes)
     with torch.no_grad():
         t = tqdm(enumerate(testloader), total=len(testloader), desc='Loss: **** | Test Acc: ****% ',
                  bar_format='{desc}{bar}{r_bar}')
@@ -105,8 +112,10 @@ def test(testloader, device, net, clf):
             _, predicted = raw_scores.max(1)
             total += targets.size(0)
             correct += predicted.eq(targets).sum().item()
+            cmat += confmat(predicted, targets)
 
             t.set_description('Loss: %.3f | Test Acc: %.3f%% ' % (test_clf_loss / (batch_idx + 1), 100. * correct / total))
 
     acc = 100. * correct / total
-    return acc
+    bacc = 0.5 * ((cmat[0][0] / (cmat[0][0] + cmat[0][1])) + (cmat[1][1] / (cmat[1][1] + cmat[1][0])))
+    return acc, bacc, cmat, test_clf_loss

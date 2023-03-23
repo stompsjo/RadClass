@@ -32,12 +32,15 @@ import json
 # import torchvision
 # import torchvision.transforms as transforms
 
+import sys
+sys.path.append('/mnt/palpatine/u9f/RadClass/scripts/')
+sys.path.append('/mnt/palpatine/u9f/RadClass/data/')
 # from augmentation import ColourDistortion
-from scripts.dataset import *
+from dataset import *
+from specTools import read_h_file
 # from models import *
-from scripts import transforms
+import transforms
 from sklearn.model_selection import train_test_split
-from data.specTools import read_h_file
 import numpy as np
 import pandas as pd
 
@@ -51,7 +54,7 @@ def add_indices(dataset_cls):
     return NewClass
 
 
-def get_datasets(dataset, dset_fpath, bckg_fpath, add_indices_to_data=False):# , augment_clf_train=False, num_positive=None):
+def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None, testfpath=None, add_indices_to_data=False):# , augment_clf_train=False, num_positive=None):
 
     # CACHED_MEAN_STD = {
     #     'cifar10': ((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
@@ -136,6 +139,35 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, add_indices_to_data=False):# ,
     #     transform_clftrain = transform_test
 
     if dataset == 'minos':
+        data = pd.read_hdf(dset_fpath, key='data')
+        # print(f'\tclasses: {np.unique(targets, return_counts=True)}')
+        # print(f'\t\tshape: {targets.shape}')
+        ytr = np.full(data.shape[0], -1)
+        Xtr = data.to_numpy()[:, np.arange(1000)].astype(float)
+        print(f'\tNOTE: double check data indexing: {data.shape}')
+        val = pd.read_hdf(valsfpath, key='data')
+        Xval = val.to_numpy()[:, 1+np.arange(1000)].astype(float)
+        yval = val['label'].values
+        yval[yval == 1] = 0
+        yval[yval != 0] = 1
+        test = read_h_file(testfpath, 60, 60)
+        Xtest = test.to_numpy()[:, np.arange(1000)].astype(float)
+        ytest = test['event'].values
+        # all test values are positives
+        ytest = np.full_like(ytest, 0, dtype=np.int32)
+        print(f'\ttraining instances = {Xtr.shape[0]}')
+        print(f'\tvalidation instances = {Xval.shape[0]}')
+        print(f'\ttest instances = {Xtest.shape[0]}')
+
+        if add_indices_to_data:
+            tr_dset = add_indices(MINOSBiaugment(Xtr, ytr, transforms=transform_train))
+            val_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std))
+            test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std))
+        else:
+            tr_dset = MINOSBiaugment(Xtr, ytr, transforms=transform_train)
+            val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std)
+            test_dset = DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std)
+    elif dataset == 'minos-curated':
         data = read_h_file(dset_fpath, 60, 60)
         events = np.unique(data['event'].values)
         targets = data['event'].replace(events, np.arange(len(events)), inplace=False).values
@@ -154,18 +186,42 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, add_indices_to_data=False):# ,
             test_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std)
     elif dataset == 'minos-2019':
         data = pd.read_hdf(dset_fpath, key='data')
-        events = np.unique(data['label'].values)
+        targets = np.unique(data['label'].values)
         targets = data['event'].replace(events, np.arange(len(events)), inplace=False).values
         data = data.to_numpy()[:, 1+np.arange(1000)].astype(float)
         print(f'\tNOTE: double check data indexing: {data[0]}')
-        Xtr, X, ytr, y = train_test_split(data, targets, test_size=0.3, stratify=True)
-        Xval, Xtest, yval, ytest = train_test_split(X, y, train_size=0.33, stratify=True)
+        Xtr, X, ytr, y = train_test_split(data, targets, test_size=0.3)
+        Xval, Xtest, yval, ytest = train_test_split(X, y, train_size=0.33)
         print(f'\ttraining instances = {Xtr.shape[0]}')
         print(f'\tvalidation instances = {Xval.shape[0]}')
         print(f'\ttest instances = {Xtest.shape[0]}')
 
         if add_indices_to_data:
             tr_dset = add_indices(MINOSBiaugment(Xtr, ytr, transforms=transform_train))
+            val_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std))
+            test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std))
+        else:
+            tr_dset = MINOSBiaugment(Xtr, ytr, transforms=transform_train)
+            val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std)
+            test_dset = DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std)
+    elif dataset == 'minos-2019-binary':
+        data = pd.read_hdf(dset_fpath, key='data')
+        targets = data['label'].values
+        targets[targets == 1] = 0
+        targets[targets != 0] = 1
+        print(f'\tclasses: {np.unique(targets, return_counts=True)}')
+        print(f'\t\tshape: {targets.shape}')
+        # targets = data['event'].replace(events, np.arange(len(events)), inplace=False).values
+        data = data.to_numpy()[:, 1+np.arange(1000)].astype(float)
+        print(f'\tNOTE: double check data indexing: {data.shape}')
+        Xtr, X, ytr, y = train_test_split(data, targets, test_size=0.3)
+        Xval, Xtest, yval, ytest = train_test_split(X, y, train_size=0.33)
+        print(f'\ttraining instances = {Xtr.shape[0]}')
+        print(f'\tvalidation instances = {Xval.shape[0]}')
+        print(f'\ttest instances = {Xtest.shape[0]}')
+
+        if add_indices_to_data:
+            tr_dset = add_indices(MINOSBiaugment(np.append(Xtr, Xval, axis=0), np.append(ytr, yval, axis=0), transforms=transform_train))
             val_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std))
             test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std))
         else:

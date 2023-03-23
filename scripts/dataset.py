@@ -3,6 +3,16 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
+import logging
+
+def memory_summary():
+    # Only import Pympler when we need it. We don't want it to
+    # affect our process if we never call memory_summary.
+    from pympler import summary, muppy
+    mem_summary = summary.summarize(muppy.get_objects())
+    rows = summary.format_(mem_summary)
+    return '\n'.join(rows)
+
 
 class DataOrganizer(Dataset):
     def __init__(self, X, y, mean, std):
@@ -19,7 +29,7 @@ class DataOrganizer(Dataset):
         x = self.data[idx]
         y = self.targets[idx]
         x -= self.mean
-        x = torch.where(self.std == 0., 0., x/self.std)
+        x = torch.where(self.std == 0., x, x/self.std)
         # x /= self.std
 
         return x, y
@@ -36,7 +46,6 @@ class MINOSBiaugment(Dataset):
 
         self.mean = torch.mean(self.data, axis=0)
         self.std = torch.std(self.data, axis=0)
-        # print(f'mean={self.mean}\nstd={self.std}')
 
     def __len__(self):
         return self.data.size(0)
@@ -52,17 +61,15 @@ class MINOSBiaugment(Dataset):
 
         if self.transforms is not None:
             aug1, aug2 = np.random.choice(self.transforms, size=2, replace=False)
+            logging.debug(f'{index}: aug1={aug1} and aug2={aug2}')
             spec1 = torch.FloatTensor(aug1(spec))
             spec2 = torch.FloatTensor(aug2(spec))
 
-        # print(f'spec1 shape={spec1.shape}, mean shape={self.mean.shape}, and std shape={self.std.shape}')
         spec1 -= self.mean
-        spec1 = torch.where(self.std == 0., 0., spec1/self.std)
+        spec1 = torch.where(self.std == 0., spec1, spec1/self.std)
         # spec1 /= self.std
         spec2 -= self.mean
-        spec2 = torch.where(self.std == 0., 0., spec2/self.std)
+        spec2 = torch.where(self.std == 0., spec2, spec2/self.std)
         # spec2 /= self.std
-
-        # print(f'spec1={spec1[:10]}\nspec2={spec2[:10]}')
 
         return (spec1, spec2), target, index

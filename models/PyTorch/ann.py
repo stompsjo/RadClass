@@ -5,7 +5,9 @@ import pandas as pd
 
 from sklearn.metrics import r2_score
 
-from models.PyTorch.critic import MSELoss
+import sys
+sys.path.append('/mnt/palpatine/u9f/RadClass/models/PyTorch/')
+from critic import MSELoss
 
 import torch
 from torch import nn
@@ -60,8 +62,10 @@ class LinearNN(nn.Module):
         self.criterion = criterion
         self.p = dropout_rate
         self.n_epochs = n_epochs
-        self.device = torch.device('cpu')
-        if isinstance(mid, list) and (len(mid) != n_layers):
+        if isinstance(mid, list) and len(mid) == 1 and n_layers > 1:
+            mid = np.full(n_layers, mid[0])
+        # if isinstance(mid, list) and (len(mid) != n_layers):
+        if len(mid) != n_layers:
             raise ValueError('Specified layer architecture (mid)'
                              + 'should match n_layers')
         if isinstance(mid, int):
@@ -123,6 +127,7 @@ class LinearNN(nn.Module):
         return r2_score(np.array(y), np.array(yhat))
 
     def fit(self, train_loader, valid_loader):
+        self.device = torch.device('cpu')
         stopper = EarlyStopper(patience=int(0.02*self.n_epochs), min_delta=0)
         train_losses, valid_losses = [], []
         for t in range(1, self.n_epochs+1):
