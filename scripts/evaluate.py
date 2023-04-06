@@ -26,7 +26,7 @@ def save_checkpoint(net, clf, critic, epoch, args, script_name):
     }
     if not os.path.isdir('checkpoint'):
         os.mkdir('checkpoint')
-    destination = os.path.join('./checkpoint', args.filename)
+    destination = os.path.join('./checkpoint', args.filename+'.pth')
     torch.save(state, destination)
 
 

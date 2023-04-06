@@ -148,13 +148,18 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None, testfpath=None
         val = pd.read_hdf(valsfpath, key='data')
         Xval = val.to_numpy()[:, 1+np.arange(1000)].astype(float)
         yval = val['label'].values
-        yval[yval == 1] = 0
-        yval[yval != 0] = 1
+        # yval[yval == 1] = 0
+        yval[yval != 1] = 0
         test = read_h_file(testfpath, 60, 60)
         Xtest = test.to_numpy()[:, np.arange(1000)].astype(float)
-        ytest = test['event'].values
+        targets = test['event'].values
         # all test values are positives
-        ytest = np.full_like(ytest, 0, dtype=np.int32)
+        # ytest = np.full_like(ytest, 0, dtype=np.int32)
+        ytest = np.ones_like(targets, dtype=np.int32)
+        # metal transfers
+        ytest[targets == 'ac225'] = 0
+        ytest[targets == 'activated-metals'] = 0
+        ytest[targets == 'spent-fuel'] = 0
         print(f'\ttraining instances = {Xtr.shape[0]}')
         print(f'\tvalidation instances = {Xval.shape[0]}')
         print(f'\ttest instances = {Xtest.shape[0]}')
@@ -168,30 +173,62 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None, testfpath=None
             val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std)
             test_dset = DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std)
     elif dataset == 'minos-curated':
-        data = read_h_file(dset_fpath, 60, 60)
-        events = np.unique(data['event'].values)
-        targets = data['event'].replace(events, np.arange(len(events)), inplace=False).values
-        data = data.to_numpy()[:, np.arange(1000)].astype(float)
-        Xtr, Xval, ytr, yval = train_test_split(data, targets, test_size=0.33)
+        data = pd.read_hdf(dset_fpath, key='data')
+        # print(f'\tclasses: {np.unique(targets, return_counts=True)}')
+        # print(f'\t\tshape: {targets.shape}')
+        ytr = np.full(data.shape[0], -1)
+        Xtr = data.to_numpy()[:, np.arange(1000)].astype(float)
+        print(f'\tNOTE: double check data indexing: {data.shape}')
+
+        test_data = read_h_file(testfpath, 60, 60)
+        X = test_data.to_numpy()[:, np.arange(1000)].astype(float)
+        y = test_data['event'].values
+        Xval, Xtest, val_targets, test_targets = train_test_split(X, y, train_size=0.03, stratify=y)
+        # all test values are positives
+        # ytest = np.full_like(ytest, 0, dtype=np.int32)
+        yval = np.ones_like(val_targets, dtype=np.int32)
+        ytest = np.ones_like(test_targets, dtype=np.int32)
+        # metal transfers
+        yval[val_targets == 'ac225'] = 0
+        yval[val_targets == 'activated-metals'] = 0
+        yval[val_targets == 'spent-fuel'] = 0
+        ytest[test_targets == 'ac225'] = 0
+        ytest[test_targets == 'activated-metals'] = 0
+        ytest[test_targets == 'spent-fuel'] = 0
+
+        # events = np.unique(data['event'].values)
+        # targets = data['event'].replace(events, np.arange(len(events)), inplace=False).values
+        # data = data.to_numpy()[:, np.arange(1000)].astype(float)
+        # Xtr, Xval, ytr, yval = train_test_split(data, targets, test_size=0.33, stratfy=True)
         print(f'\ttraining instances = {Xtr.shape[0]}')
         print(f'\tvalidation instances = {Xval.shape[0]}')
+        print(f'\ttest instances = {Xtest.shape[0]}')
 
         if add_indices_to_data:
             tr_dset = add_indices(MINOSBiaugment(Xtr, ytr, transforms=transform_train))
-            val_dset = add_indices(DataOrganizer(Xtr, ytr, tr_dset.mean, tr_dset.std))
-            test_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std))
+            val_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std))
+            test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std))
         else:
             tr_dset = MINOSBiaugment(Xtr, ytr, transforms=transform_train)
-            val_dset = DataOrganizer(Xtr, ytr, tr_dset.mean, tr_dset.std)
-            test_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std)
+            val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std)
+            test_dset = DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std)
     elif dataset == 'minos-2019':
+        ### Including unlabeled spectral data for contrastive learning
         data = pd.read_hdf(dset_fpath, key='data')
-        targets = np.unique(data['label'].values)
-        targets = data['event'].replace(events, np.arange(len(events)), inplace=False).values
-        data = data.to_numpy()[:, 1+np.arange(1000)].astype(float)
-        print(f'\tNOTE: double check data indexing: {data[0]}')
-        Xtr, X, ytr, y = train_test_split(data, targets, test_size=0.3)
-        Xval, Xtest, yval, ytest = train_test_split(X, y, train_size=0.33)
+        # print(f'\tclasses: {np.unique(targets, return_counts=True)}')
+        # print(f'\t\tshape: {targets.shape}')
+        ytr = np.full(data.shape[0], -1)
+        Xtr = data.to_numpy()[:, np.arange(1000)].astype(float)
+        print(f'\tNOTE: double check data indexing: {data.shape}')
+
+        X = pd.read_hdf(valsfpath, key='data')
+        # events = np.unique(X['label'].values)
+        y = X['label'].values
+        y[y == 1] = 0
+        y[y != 0] = 1
+        # y = X['event'].replace(events, np.arange(len(events)), inplace=False).values
+        X = X.to_numpy()[:, 1+np.arange(1000)].astype(float)
+        Xval, Xtest, yval, ytest = train_test_split(X, y, train_size=0.4)
         print(f'\ttraining instances = {Xtr.shape[0]}')
         print(f'\tvalidation instances = {Xval.shape[0]}')
         print(f'\ttest instances = {Xtest.shape[0]}')
@@ -205,6 +242,7 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None, testfpath=None
             val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std)
             test_dset = DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std)
     elif dataset == 'minos-2019-binary':
+        ### Using only the data that was used for the preliminary experiment
         data = pd.read_hdf(dset_fpath, key='data')
         targets = data['label'].values
         targets[targets == 1] = 0

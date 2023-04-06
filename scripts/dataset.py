@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import Dataset
 
 import logging
+import joblib
 
 def memory_summary():
     # Only import Pympler when we need it. We don't want it to

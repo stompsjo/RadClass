@@ -101,7 +101,7 @@ def parse_arguments():
                         help='Frequency to fit a linear clf with L-BFGS for testing'
                              'Not appropriate for large datasets. Set 0 to avoid '
                              'classifier only training here.')
-    parser.add_argument("--filename", type=str, default='ckpt.pth',
+    parser.add_argument("--filename", type=str, default='ckpt',
                         help='Output file name')
     parser.add_argument('--in-dim', '-i', type=int,
                         help='number of input image dimensions')
@@ -119,7 +119,7 @@ def parse_arguments():
 def main():
     logging.basicConfig(filename='debug.log',
                         filemode='a',
-                        level=logging.DEBUG)
+                        level=logging.INFO)
     args = parse_arguments()
     args.lr = args.base_lr * (args.batch_size / 256)
 
@@ -140,6 +140,8 @@ def main():
     trainset, valset, testset = get_datasets(args.dataset, args.dfpath,
                                              args.bfpath, args.valfpath,
                                              args.testfpath)
+    joblib.dump(trainset.mean, args.filename+'-train_means.joblib')
+    joblib.dump(trainset.std, args.filename+'-train_stds.joblib')
 
     pin_memory = True if device == 'cuda' else False
     print(f'pin_memory={pin_memory}')
@@ -184,8 +186,12 @@ def main():
     ##############################################################
     # Critic
     ##############################################################
+    # projection head to reduce dimensionality for contrastive loss
+    proj_head = LinearCritic(latent_dim=args.mid[-1]).to(device)
+    # classifier for better decision boundaries
+    # latent_clf = nn.Linear(proj_head.projection_dim, num_classes).to(device)
     # NTXentLoss on its own requires labels (all unique)
-    critic = NTXentLoss(reducer=reducers.DoNothingReducer())
+    critic = NTXentLoss(temperature=0.07, reducer=reducers.DoNothingReducer())
     sub_batch_size = 64
 
     if device == 'cuda':
@@ -205,8 +211,12 @@ def main():
         best_acc = checkpoint['acc']
         start_epoch = checkpoint['epoch']
 
-    base_optimizer = optim.SGD(list(net.parameters()) + list(critic.parameters()), lr=args.lr, weight_decay=1e-6,
-                               momentum=args.momentum)
+    # base_optimizer = optim.SGD(list(net.parameters()) + list(proj_head.parameters())
+    #                            + list(latent_clf.parameters()) + list(critic.parameters()),
+    #                            lr=args.lr, weight_decay=1e-6, momentum=args.momentum)
+    base_optimizer = optim.SGD(list(net.parameters()) + list(proj_head.parameters())
+                               + list(critic.parameters()),
+                               lr=args.lr, weight_decay=1e-6, momentum=args.momentum)
     if args.cosine_anneal:
         scheduler = CosineAnnealingWithLinearRampLR(base_optimizer, args.num_epochs)
     # encoder_optimizer = LARS(base_optimizer, trust_coef=1e-3)
@@ -225,6 +235,12 @@ def main():
             x1, x2 = x1.to(device), x2.to(device)
             encoder_optimizer.zero_grad()
             representation1, representation2 = net(x1), net(x2)
+            # projection head for contrastive loss
+            # optional: instead pass representations directly; benefit?
+            representation1, representation2 = proj_head.project(representation1), proj_head.project(representation2)
+            # labels1 = latent_clf(representation1)
+            # labels2 = latent_clf(representation2)
+
             # each (x1i, x2i) is a positive pair
             labels = torch.arange(representation1.shape[0])
             # sub-batching to preserve memory
@@ -283,7 +299,7 @@ def main():
                 save_checkpoint(net, clf, critic, epoch, args, os.path.basename(__file__))
                 results = {'bacc_curve': bacc_curve, 'train_loss_curve': train_loss_curve,
                         'test_loss_curve': test_loss_curve, 'confmat_curve': confmat_curve}
-                joblib.dump(results, 'result_curves.joblib')
+                joblib.dump(results, './checkpoint/'+args.filename+'-result_curves.joblib')
             elif args.test_freq == 0:
                 # save_checkpoint(net, clf, critic, epoch, args, os.path.basename(__file__))
                 save_checkpoint(net, clf, critic, epoch, args, os.path.basename(__file__))

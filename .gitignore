@@ -4,5 +4,8 @@ __pycache__
 *.h5
 *.ipynb
 *.csv
+*.joblib
+*.log
+results/
 data/
 checkpoint/
