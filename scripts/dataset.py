@@ -5,6 +5,10 @@ from torch.utils.data import Dataset
 
 import logging
 import joblib
+import sys
+sys.path.append('/mnt/palpatine/u9f/RadClass/scripts/')
+from augs import DANSE
+
 
 def memory_summary():
     # Only import Pympler when we need it. We don't want it to
@@ -14,18 +18,26 @@ def memory_summary():
     rows = summary.format_(mem_summary)
     return '\n'.join(rows)
 
+auger = DANSE()
+def remove_bckg(X):
+    if X.ndim > 1:
+        newX = torch.zeros_like(X)
+        for i in range(X.shape[0]):
+            newX[i] = X[i] - auger._estimate(X[i], mode='beads')
+        return newX
+    else:
+        return X - auger._estimate(X, mode='beads')
+
 
 class DataOrganizer(Dataset):
-    def __init__(self, X, y, mean, std):
+    def __init__(self, X, y, mean, std, accounting=False):
         self.data = torch.FloatTensor(X.copy())
         self.targets = torch.LongTensor(y.copy())
+        # whether or not to remove background in output spectra
+        self.accounting = accounting
 
         self.mean = mean
         self.std = std
-
-        # normalize all data
-        self.data -= self.mean
-        self.data = torch.where(self.std == 0, self.data, self.data/self.std)
 
     def __len__(self):
         return self.data.size(0)
@@ -34,27 +46,38 @@ class DataOrganizer(Dataset):
         x = self.data[idx]
         y = self.targets[idx]
 
+        if self.accounting:
+            x = remove_bckg(x)
+        # normalize all data
+        x = x - self.mean
+        x = torch.where(self.std == 0, x, x/self.std)
+
         return x, y
 
 
 class MINOSBiaugment(Dataset):
-    def __init__(self, X, y, transforms, normalization=False):
+    def __init__(self, X, y, transforms, normalization=False, accounting=False):
         # self.data = pd.read_hdf(data_fpath, key='data')
         # self.targets = torch.from_numpy(self.data['event'].values)
         # self.data = torch.from_numpy(self.data[np.arange(1000)].values)
         self.data = torch.FloatTensor(X.copy())
         self.targets = torch.LongTensor(y.copy())
         self.transforms = transforms
+        # whether or not to remove background in output spectra
+        self.accounting = accounting
 
-        self.mean = torch.mean(self.data, axis=0)
-        self.std = torch.std(self.data, axis=0)
+        # remove background for normalization
+        if self.accounting:
+            print('*************************** conducting accounting')
+            tmp = remove_bckg(self.data)
+        else:
+            tmp = self.data
+        self.mean = torch.mean(tmp, axis=0)
+        self.std = torch.std(tmp, axis=0)
         if normalization:
-            self.mean = torch.min(self.data, axis=0)[0]
-            self.std = torch.max(self.data, axis=0)[0] - self.mean
-
-        # normalize all data
-        self.data -= self.mean
-        self.data = torch.where(self.std == 0., self.data, self.data/self.std)
+            print('*************************** conducting min-max normalization')
+            self.mean = torch.min(tmp, axis=0)[0]
+            self.std = torch.max(tmp, axis=0)[0] - self.mean
 
     def __len__(self):
         return self.data.size(0)
@@ -68,30 +91,39 @@ class MINOSBiaugment(Dataset):
         """
         spec, target = self.data[index], self.targets[index]
 
-        if self.transforms is not None:
-            aug1, aug2 = np.random.choice(self.transforms, size=2, replace=False)
-            logging.debug(f'{index}: aug1={aug1} and aug2={aug2}')
-            spec1 = torch.FloatTensor(aug1(spec))
-            spec2 = torch.FloatTensor(aug2(spec))
+        # if self.transforms is not None:
+        aug1, aug2 = np.random.choice(self.transforms, size=2, replace=False)
+        logging.debug(f'{index}: aug1={aug1} and aug2={aug2}')
+        spec1 = torch.FloatTensor(aug1(spec))
+        spec2 = torch.FloatTensor(aug2(spec))
+
+        # remove background
+        if self.accounting:
+            spec1 = remove_bckg(spec1)
+            spec2 = remove_bckg(spec2)
+        # normalize all data
+        spec1 = spec1 - self.mean
+        spec1 = torch.where(self.std == 0., spec1, spec1/self.std)
+        spec2 = spec2 - self.mean
+        spec2 = torch.where(self.std == 0., spec2, spec2/self.std)
+
 
         return (spec1, spec2), target, index
 
 
 class DataBiaugment(Dataset):
-    def __init__(self, X, y, transforms, mean, std):
+    def __init__(self, X, y, transforms, mean, std, accounting=False):
         # self.data = pd.read_hdf(data_fpath, key='data')
         # self.targets = torch.from_numpy(self.data['event'].values)
         # self.data = torch.from_numpy(self.data[np.arange(1000)].values)
         self.data = torch.FloatTensor(X.copy())
         self.targets = torch.LongTensor(y.copy())
         self.transforms = transforms
+        # whether or not to remove background in output spectra
+        self.accounting = accounting
 
         self.mean = mean
         self.std = std
-
-        # normalize all data
-        self.data -= self.mean
-        self.data = torch.where(self.std == 0, self.data, self.data/self.std)
 
     def __len__(self):
         return self.data.size(0)
@@ -105,10 +137,21 @@ class DataBiaugment(Dataset):
         """
         spec, target = self.data[index], self.targets[index]
 
-        if self.transforms is not None:
-            aug1, aug2 = np.random.choice(self.transforms, size=2, replace=False)
-            logging.debug(f'{index}: aug1={aug1} and aug2={aug2}')
-            spec1 = torch.FloatTensor(aug1(spec))
-            spec2 = torch.FloatTensor(aug2(spec))
+        # if self.transforms is not None:
+        aug1, aug2 = np.random.choice(self.transforms, size=2, replace=False)
+        logging.debug(f'{index}: aug1={aug1} and aug2={aug2}')
+        spec1 = torch.FloatTensor(aug1(spec))
+        spec2 = torch.FloatTensor(aug2(spec))
+
+        # remove background
+        if self.accounting:
+            spec1 = remove_bckg(spec1)
+            spec2 = remove_bckg(spec2)
+        # normalize all data
+        spec1 = spec1 - self.mean
+        spec1 = torch.where(self.std == 0., spec1, spec1/self.std)
+        spec2 = spec2 - self.mean
+        spec2 = torch.where(self.std == 0., spec2, spec2/self.std)
+
 
         return (spec1, spec2), target, index

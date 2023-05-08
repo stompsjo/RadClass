@@ -33,6 +33,10 @@ import joblib
 import logging
 import copy
 
+# needed for lightning's distributed package
+# os.environ["PL_TORCH_DISTRIBUTED_BACKEND"] = "gloo"
+# torch.distributed.init_process_group("gloo")
+
 '''
 Author: Jordan Stomps
 
@@ -96,6 +100,8 @@ def parse_arguments():
                         help="Use cosine annealing on the learning rate")
     parser.add_argument("--normalization", action='store_true',
                         help="Use normalization instead of standardization in pre-processing.")
+    parser.add_argument("--accounting", action='store_true',
+                        help='Remove estimated background before returning spectra in training.')
     parser.add_argument("--arch", type=str, default='minos',
                         help='Encoder architecture',
                         choices=['minos', 'minos-ssml', 'minos-transfer-ssml', 'minos-curated', 'minos-2019',
@@ -147,12 +153,12 @@ def main():
     np.random.seed(20230316)
 
     print('==> Preparing data..')
+    print('min-max normalization? ', args.normalization)
     num_classes = args.n_classes
     trainset, valset, testset, ssmlset = get_datasets(args.dataset, args.dfpath,
                                                       args.bfpath, args.valfpath,
-                                                      args.testfpath, args.normalization)
-    joblib.dump(trainset.mean, args.filename+'-train_means.joblib')
-    joblib.dump(trainset.std, args.filename+'-train_stds.joblib')
+                                                      args.testfpath, args.normalization,
+                                                      args.accounting)
 
     pin_memory = True if device == 'cuda' else False
     print(f'pin_memory={pin_memory}')
@@ -238,19 +244,23 @@ def main():
     # base_optimizer = optim.SGD(list(net.parameters()) + list(proj_head.parameters())
     #                            + list(latent_clf.parameters()) + list(critic.parameters()),
     #                            lr=args.lr, weight_decay=1e-6, momentum=args.momentum)
-    base_optimizer = optim.SGD(list(net.parameters()) + list(proj_head.parameters())
-                               + list(critic.parameters()),
-                               lr=args.lr, weight_decay=1e-6, momentum=args.momentum)
-    if args.cosine_anneal:
-        scheduler = CosineAnnealingWithLinearRampLR(base_optimizer, args.num_epochs)
-    # encoder_optimizer = LARS(base_optimizer, trust_coef=1e-3)
-    encoder_optimizer = base_optimizer
+    # base_optimizer = optim.SGD(list(net.parameters()) + list(proj_head.parameters())
+    #                            + list(critic.parameters()),
+    #                            lr=args.lr, weight_decay=1e-6, momentum=args.momentum)
+    # if args.cosine_anneal:
+    #     scheduler = CosineAnnealingWithLinearRampLR(base_optimizer, args.num_epochs)
+    # # encoder_optimizer = LARS(base_optimizer, trust_coef=1e-3)
+    # encoder_optimizer = base_optimizer
 
     # make checkpoint directory
     ckpt_path = './checkpoint/'+args.filename+'/'
     if not os.path.isdir(ckpt_path): os.mkdir(ckpt_path)
 
-    lightning_model = LitSimCLR(net, proj_head, critic, args.batch_size, sub_batch_size, args.lr, args.momentum, args.cosine_anneal, args.num_epochs, args.alpha, num_classes, args.test_freq)
+    # save statistical data
+    joblib.dump(trainset.mean, ckpt_path+args.filename+'-train_means.joblib')
+    joblib.dump(trainset.std, ckpt_path+args.filename+'-train_stds.joblib')
+
+    lightning_model = LitSimCLR(net, proj_head, critic, args.batch_size, sub_batch_size, args.lr, args.momentum, args.cosine_anneal, args.num_epochs, args.alpha, num_classes, args.test_freq, testloader)
     tb_logger = pl.loggers.TensorBoardLogger(save_dir=ckpt_path)
     trainer = pl.Trainer(max_epochs=args.num_epochs, default_root_dir=ckpt_path, check_val_every_n_epoch=args.test_freq, profiler='simple', limit_train_batches=0.75, logger=tb_logger, num_sanity_val_steps=0)
     trainer.fit(model=lightning_model, train_dataloaders=trainloader, val_dataloaders=valloader)

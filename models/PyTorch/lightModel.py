@@ -138,14 +138,14 @@ class SimCLR(pl.LightningModule):
 
 class LitSimCLR(pl.LightningModule):
     # PyTorch Lightning Implementation of SimCLR as manually implemented via A E Foster
-    def __init__(self, net, proj, critic, batch_size, sub_batch_size, lr, momentum, cosine_anneal, num_epochs, alpha, n_classes, test_freq):
+    def __init__(self, net, proj, critic, batch_size, sub_batch_size, lr, momentum, cosine_anneal, num_epochs, alpha, n_classes, test_freq, testloader):
         super().__init__()
         self.net = net
         self.proj = proj
         self.critic = critic
         self.batch_size = batch_size
         self.sub_batch_size = sub_batch_size
-        self.lr, self.momentum, self.cosine_anneal, self.num_epochs, self.alpha, self.n_classes, self.test_freq = lr, momentum, cosine_anneal, num_epochs, alpha, n_classes, test_freq
+        self.lr, self.momentum, self.cosine_anneal, self.num_epochs, self.alpha, self.n_classes, self.test_freq, self.testloader = lr, momentum, cosine_anneal, num_epochs, alpha, n_classes, test_freq, testloader
         self.save_hyperparameters(ignore=['critic', 'proj', 'net'])
 
     def custom_histogram_adder(self):
@@ -256,8 +256,16 @@ class LitSimCLR(pl.LightningModule):
             bacc = 0.5 * ((cmat[0][0] / (cmat[0][0] + cmat[0][1])) + (cmat[1][1] / (cmat[1][1] + cmat[1][0])))
             print('Loss: %.3f | Train Acc: %.3f%% ' % (loss, 100. * correct / targets.shape[0]))
             self.log_dict({'val_acc': acc, 'val_bacc': bacc, 'val_tn': cmat[0][0], 'val_fp': cmat[0][1], 'val_fn': cmat[1][0], 'val_tp': cmat[1][1], 'val_loss': loss})
-            self.test_step(batch, batch_idx)
-            return predicted
+
+        # rolling test/validation
+        with torch.no_grad():
+            t = tqdm(enumerate(self.testloader), total=len(self.testloader), desc='Loss: **** | Test Acc: ****% ',
+                    bar_format='{desc}{bar}{r_bar}')
+            for batch_idx, batch in t:
+                _, bacc = self.test_step(batch, batch_idx)
+
+                t.set_description('Test BAcc: %.3f%% ' % (bacc))
+        return predicted
 
     def test_step(self, batch, batch_idx):
         criterion = nn.CrossEntropyLoss()
@@ -287,7 +295,7 @@ class LitSimCLR(pl.LightningModule):
         acc = 100. * correct / total
         bacc = 0.5 * ((cmat[0][0] / (cmat[0][0] + cmat[0][1])) + (cmat[1][1] / (cmat[1][1] + cmat[1][0])))
         self.log_dict({'test_acc': acc, 'test_bacc': bacc, 'test_tn': cmat[0][0], 'test_fp': cmat[0][1], 'test_fn': cmat[1][0], 'test_tp': cmat[1][1], 'test_loss': test_clf_loss})
-        return predicted
+        return predicted, bacc
 
 
     # def validation_step(self):

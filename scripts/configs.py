@@ -54,7 +54,7 @@ def add_indices(dataset_cls):
     return NewClass
 
 
-def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None, testfpath=None, normalization=False, add_indices_to_data=False):# , augment_clf_train=False, num_positive=None):
+def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None, testfpath=None, normalization=False, accounting=False, add_indices_to_data=False):# , augment_clf_train=False, num_positive=None):
 
     ssml_dset = None
     # CACHED_MEAN_STD = {
@@ -166,15 +166,15 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None, testfpath=None
         print(f'\ttest instances = {Xtest.shape[0]}')
 
         if add_indices_to_data:
-            tr_dset = add_indices(MINOSBiaugment(Xtr, ytr, transforms=transform_train, normalization=normalization))
-            val_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std))
-            ssml_dset = add_indices(DataBiaugment(Xval, yval, transform_train, tr_dset.mean, tr_dset.std))
-            test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std))
+            tr_dset = add_indices(MINOSBiaugment(Xtr, ytr, transforms=transform_train, normalization=normalization, accounting=accounting))
+            val_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std, accounting=accounting))
+            ssml_dset = add_indices(DataBiaugment(Xval, yval, transform_train, tr_dset.mean, tr_dset.std, accounting=accounting))
+            test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std, accounting=accounting))
         else:
-            tr_dset = MINOSBiaugment(Xtr, ytr, transforms=transform_train, normalization=normalization)
-            val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std)
-            ssml_dset = DataBiaugment(Xval, yval, transform_train, tr_dset.mean, tr_dset.std)
-            test_dset = DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std)
+            tr_dset = MINOSBiaugment(Xtr, ytr, transforms=transform_train, normalization=normalization, accounting=accounting)
+            val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std, accounting=accounting)
+            ssml_dset = DataBiaugment(Xval, yval, transform_train, tr_dset.mean, tr_dset.std, accounting=accounting)
+            test_dset = DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std, accounting=accounting)
     elif dataset in ['minos-curated', 'minos-transfer-ssml']:
         data = pd.read_hdf(dset_fpath, key='data')
         # print(f'\tclasses: {np.unique(targets, return_counts=True)}')
@@ -208,15 +208,15 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None, testfpath=None
         print(f'\ttest instances = {Xtest.shape[0]}')
 
         if add_indices_to_data:
-            tr_dset = add_indices(MINOSBiaugment(Xtr, ytr, transforms=transform_train, normalization=normalization))
-            val_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std))
-            ssml_dset = add_indices(DataBiaugment(Xval, yval, transform_train, tr_dset.mean, tr_dset.std))
-            test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std))
+            tr_dset = add_indices(MINOSBiaugment(Xtr, ytr, transforms=transform_train, normalization=normalization, accounting=accounting))
+            val_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std, accounting=accounting))
+            ssml_dset = add_indices(DataBiaugment(Xval, yval, transform_train, tr_dset.mean, tr_dset.std, accounting=accounting))
+            test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std, accounting=accounting))
         else:
-            tr_dset = MINOSBiaugment(Xtr, ytr, transforms=transform_train, normalization=normalization)
-            val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std)
-            ssml_dset = DataBiaugment(Xval, yval, transform_train, tr_dset.mean, tr_dset.std)
-            test_dset = DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std)
+            tr_dset = MINOSBiaugment(Xtr, ytr, transforms=transform_train, normalization=normalization, accounting=accounting)
+            val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std, accounting=accounting)
+            ssml_dset = DataBiaugment(Xval, yval, transform_train, tr_dset.mean, tr_dset.std, accounting=accounting)
+            test_dset = DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std, accounting=accounting)
     elif dataset == 'minos-2019':
         ### Including unlabeled spectral data for contrastive learning
         data = pd.read_hdf(dset_fpath, key='data')
@@ -233,19 +233,23 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None, testfpath=None
         y[y != 0] = 1
         # y = X['event'].replace(events, np.arange(len(events)), inplace=False).values
         X = X.to_numpy()[:, 1+np.arange(1000)].astype(float)
-        Xval, Xtest, yval, ytest = train_test_split(X, y, train_size=0.4)
+        run = True
+        while run:
+            Xval, Xtest, yval, ytest = train_test_split(X, y, test_size=213)
+            if np.unique(ytest, return_counts=True)[1][0] == 125:
+                run = False
         print(f'\ttraining instances = {Xtr.shape[0]}')
         print(f'\tvalidation instances = {Xval.shape[0]}')
         print(f'\ttest instances = {Xtest.shape[0]}')
 
         if add_indices_to_data:
-            tr_dset = add_indices(MINOSBiaugment(Xtr, ytr, transforms=transform_train, normalization=normalization))
-            val_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std))
-            test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std))
+            tr_dset = add_indices(MINOSBiaugment(Xtr, ytr, transforms=transform_train, normalization=normalization, accounting=accounting))
+            val_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std, accounting=accounting))
+            test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std, accounting=accounting))
         else:
-            tr_dset = MINOSBiaugment(Xtr, ytr, transforms=transform_train, normalization=normalization)
-            val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std)
-            test_dset = DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std)
+            tr_dset = MINOSBiaugment(Xtr, ytr, transforms=transform_train, normalization=normalization, accounting=accounting)
+            val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std, accounting=accounting)
+            test_dset = DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std, accounting=accounting)
     elif dataset == 'minos-2019-binary':
         ### Using only the data that was used for the preliminary experiment
         data = pd.read_hdf(dset_fpath, key='data')
@@ -264,13 +268,13 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None, testfpath=None
         print(f'\ttest instances = {Xtest.shape[0]}')
 
         if add_indices_to_data:
-            tr_dset = add_indices(MINOSBiaugment(np.append(Xtr, Xval, axis=0), np.append(ytr, yval, axis=0), transforms=transform_train), normalization=normalization)
-            val_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std))
-            test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std))
+            tr_dset = add_indices(MINOSBiaugment(np.append(Xtr, Xval, axis=0), np.append(ytr, yval, axis=0), transforms=transform_train, normalization=normalization, accounting=accounting))
+            val_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std, accounting=accounting))
+            test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std, accounting=accounting))
         else:
-            tr_dset = MINOSBiaugment(Xtr, ytr, transforms=transform_train, normalization=normalization)
-            val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std)
-            test_dset = DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std)
+            tr_dset = MINOSBiaugment(Xtr, ytr, transforms=transform_train, normalization=normalization, accounting=accounting)
+            val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std, accounting=accounting)
+            test_dset = DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std, accounting=accounting)
     # elif dataset == 'cifar100':
     #     if add_indices_to_data:
     #         dset = add_indices(torchvision.datasets.CIFAR100)

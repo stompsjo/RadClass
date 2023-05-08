@@ -41,7 +41,7 @@ class DANSE:
         elif mode == 'mean':
             X_bckg = np.mean(X_bckg, axis=1)
         elif mode == 'beads':
-            X_bckg = beads(X_bckg.astype(float), **self.BEADS_PARAMS)[1]
+            X_bckg = beads(X_bckg, **self.BEADS_PARAMS)[1]
 
         return X_bckg
 
