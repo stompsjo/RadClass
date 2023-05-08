@@ -35,14 +35,17 @@ def encode_train_set(clftrainloader, device, net):
 
     store = []
     with torch.no_grad():
-        t = tqdm(enumerate(clftrainloader), desc='Encoded: **/** ', total=len(clftrainloader),
+        t = tqdm(enumerate(clftrainloader),
+                 desc='Encoded: **/** ',
+                 total=len(clftrainloader),
                  bar_format='{desc}{bar}{r_bar}')
         for batch_idx, (inputs, targets) in t:
             inputs, targets = inputs.to(device), targets.to(device)
             representation = net(inputs)
             store.append((representation, targets))
 
-            t.set_description('Encoded %d/%d' % (batch_idx, len(clftrainloader)))
+            t.set_description('Encoded %d/%d' %
+                              (batch_idx, len(clftrainloader)))
 
     X, y = zip(*store)
     X, y = torch.cat(X, dim=0), torch.cat(y, dim=0)
@@ -61,7 +64,9 @@ def train_clf(X, y, representation_dim, num_classes, device, reg_weight=1e-3):
     clf_optimizer = optim.LBFGS(clf.parameters(), lr=1e-2)
     clf.train()
 
-    t = tqdm(range(n_lbfgs_steps), desc='Loss: **** | Train Acc: ****% ', bar_format='{desc}{bar}{r_bar}')
+    t = tqdm(range(n_lbfgs_steps),
+             desc='Loss: **** | Train Acc: ****% ',
+             bar_format='{desc}{bar}{r_bar}')
     for _ in t:
         def closure():
             clf_optimizer.zero_grad()
@@ -76,7 +81,8 @@ def train_clf(X, y, representation_dim, num_classes, device, reg_weight=1e-3):
             # print(f'y={y}')
             # print(f'\tcorrect ({correct}) from predicted: {predicted}')
 
-            t.set_description('Loss: %.3f | Train Acc: %.3f%% ' % (loss, 100. * correct / y.shape[0]))
+            t.set_description('Loss: %.3f | Train Acc: %.3f%% ' %
+                              (loss, 100. * correct / y.shape[0]))
 
             return loss
 
@@ -99,7 +105,9 @@ def test(testloader, device, net, clf, n_classes=2):
         confmat = ConfusionMatrix(task='binary', num_classes=n_classes)
         cmat = torch.zeros(n_classes, n_classes)
     with torch.no_grad():
-        t = tqdm(enumerate(testloader), total=len(testloader), desc='Loss: **** | Test Acc: ****% ',
+        t = tqdm(enumerate(testloader),
+                 total=len(testloader),
+                 desc='Loss: **** | Test Acc: ****% ',
                  bar_format='{desc}{bar}{r_bar}')
         for batch_idx, (inputs, targets) in t:
             inputs, targets = inputs.to(device), targets.to(device)
@@ -114,8 +122,11 @@ def test(testloader, device, net, clf, n_classes=2):
             correct += predicted.eq(targets).sum().item()
             cmat += confmat(predicted, targets)
 
-            t.set_description('Loss: %.3f | Test Acc: %.3f%% ' % (test_clf_loss / (batch_idx + 1), 100. * correct / total))
+            t.set_description('Loss: %.3f | Test Acc: %.3f%% ' %
+                              (test_clf_loss / (batch_idx + 1),
+                               100. * correct / total))
 
     acc = 100. * correct / total
-    bacc = 0.5 * ((cmat[0][0] / (cmat[0][0] + cmat[0][1])) + (cmat[1][1] / (cmat[1][1] + cmat[1][0])))
+    bacc = 0.5 * ((cmat[0][0] / (cmat[0][0] + cmat[0][1])) +
+                  (cmat[1][1] / (cmat[1][1] + cmat[1][0])))
     return acc, bacc, cmat, test_clf_loss

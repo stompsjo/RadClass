@@ -1,5 +1,3 @@
-import warnings
-
 import numpy as np
 from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
@@ -655,7 +653,7 @@ class DANSE:
         val2 = original[index_ceil % len(original)]
         # interpolate the new value for each new bin
         interp = val1 * (1.0-index_rem) + val2 * index_rem
-        assert(len(interp) == targetLen)
+        assert (len(interp) == targetLen)
         return interp
 
     def _Poisson1D(self, X, lam):

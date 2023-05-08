@@ -1,25 +1,15 @@
 import numpy as np
-import pandas as pd
 import torch
-from torch.utils.data import Dataset
-
 import logging
-import joblib
-import sys
-sys.path.append('/mnt/palpatine/u9f/RadClass/scripts/')
+from torch.utils.data import Dataset
 from augs import DANSE
 
+import sys
+sys.path.append('/mnt/palpatine/u9f/RadClass/scripts/')
 
-def memory_summary():
-    # Only import Pympler when we need it. We don't want it to
-    # affect our process if we never call memory_summary.
-    from pympler import summary, muppy
-    mem_summary = summary.summarize(muppy.get_objects())
-    rows = summary.format_(mem_summary)
-    return '\n'.join(rows)
 
-auger = DANSE()
 def remove_bckg(X):
+    auger = DANSE()
     if X.ndim > 1:
         newX = torch.zeros_like(X)
         for i in range(X.shape[0]):
@@ -56,7 +46,8 @@ class DataOrganizer(Dataset):
 
 
 class MINOSBiaugment(Dataset):
-    def __init__(self, X, y, transforms, normalization=False, accounting=False):
+    def __init__(self, X, y, transforms,
+                 normalization=False, accounting=False):
         # self.data = pd.read_hdf(data_fpath, key='data')
         # self.targets = torch.from_numpy(self.data['event'].values)
         # self.data = torch.from_numpy(self.data[np.arange(1000)].values)
@@ -68,14 +59,16 @@ class MINOSBiaugment(Dataset):
 
         # remove background for normalization
         if self.accounting:
-            print('*************************** conducting accounting')
+            print('***************************\
+                   conducting accounting')
             tmp = remove_bckg(self.data)
         else:
             tmp = self.data
         self.mean = torch.mean(tmp, axis=0)
         self.std = torch.std(tmp, axis=0)
         if normalization:
-            print('*************************** conducting min-max normalization')
+            print('***************************\
+                   conducting min-max normalization')
             self.mean = torch.min(tmp, axis=0)[0]
             self.std = torch.max(tmp, axis=0)[0] - self.mean
 
@@ -106,7 +99,6 @@ class MINOSBiaugment(Dataset):
         spec1 = torch.where(self.std == 0., spec1, spec1/self.std)
         spec2 = spec2 - self.mean
         spec2 = torch.where(self.std == 0., spec2, spec2/self.std)
-
 
         return (spec1, spec2), target, index
 
@@ -152,6 +144,5 @@ class DataBiaugment(Dataset):
         spec1 = torch.where(self.std == 0., spec1, spec1/self.std)
         spec2 = spec2 - self.mean
         spec2 = torch.where(self.std == 0., spec2, spec2/self.std)
-
 
         return (spec1, spec2), target, index

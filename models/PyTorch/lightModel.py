@@ -1,9 +1,4 @@
-import argparse
-import os
-import subprocess
-
 import torch
-import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.optim as optim
 # from torchlars import LARS
@@ -15,11 +10,9 @@ sys.path.append('/mnt/palpatine/u9f/RadClass/models/PyTorch/')
 sys.path.append('/mnt/palpatine/u9f/RadClass/models/SSL/')
 
 from configs import get_datasets
-from critic import LinearCritic
 from evaluate import save_checkpoint, encode_train_set, train_clf, test
 # from models import *
 from scheduler import CosineAnnealingWithLinearRampLR
-from ann import LinearNN
 
 from pytorch_metric_learning.losses import SelfSupervisedLoss, NTXentLoss
 from pytorch_metric_learning import losses, reducers
@@ -28,10 +21,7 @@ from pytorch_metric_learning.utils import loss_and_miner_utils as lmu
 import lightning.pytorch as pl
 
 import numpy as np
-import joblib
-
-import logging
-import copy
+from torchmetrics import ConfusionMatrix
 
 '''
 Author: Jordan Stomps
@@ -64,20 +54,16 @@ SOFTWARE.
 
 '''Train an encoder using Contrastive Learning.'''
 
-import os
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from tqdm import tqdm
-from torchmetrics import ConfusionMatrix
 
-
+''' Image implementation from PyTorch Lightning
 class SimCLR(pl.LightningModule):
     # PyTorch Lightning Implementation of SimCLR as implemented in Tutorial 13
-    def __init__(self, hidden_dim, lr, temperature, weight_decay, max_epochs=500):
+    def __init__(self, hidden_dim, lr, temperature,
+                 weight_decay, max_epochs=500):
         super().__init__()
         self.save_hyperparameters()
-        assert self.hparams.temperature > 0.0, "The temperature must be a positive float!"
+        assert self.hparams.temperature > 0.0, "The temperature \
+                                                must be a positive float!"
         # Base model f(.)
         self.convnet = torchvision.models.resnet18(
             pretrained=False, num_classes=4 * hidden_dim
@@ -90,9 +76,11 @@ class SimCLR(pl.LightningModule):
         )
 
     def configure_optimizers(self):
-        optimizer = optim.AdamW(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
+        optimizer = optim.AdamW(self.parameters(), lr=self.hparams.lr,
+                                weight_decay=self.hparams.weight_decay)
         lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=self.hparams.max_epochs, eta_min=self.hparams.lr / 50
+            optimizer, T_max=self.hparams.max_epochs,
+            eta_min=self.hparams.lr / 50
         )
         return [optimizer], [lr_scheduler]
 
@@ -103,9 +91,11 @@ class SimCLR(pl.LightningModule):
         # Encode all images
         feats = self.convnet(imgs)
         # Calculate cosine similarity
-        cos_sim = F.cosine_similarity(feats[:, None, :], feats[None, :, :], dim=-1)
+        cos_sim = F.cosine_similarity(feats[:, None, :],
+                                      feats[None, :, :], dim=-1)
         # Mask out cosine similarity to itself
-        self_mask = torch.eye(cos_sim.shape[0], dtype=torch.bool, device=cos_sim.device)
+        self_mask = torch.eye(cos_sim.shape[0], dtype=torch.bool,
+                              device=cos_sim.device)
         cos_sim.masked_fill_(self_mask, -9e15)
         # Find positive example -> batch_size//2 away from the original example
         pos_mask = self_mask.roll(shifts=cos_sim.shape[0] // 2, dims=0)
@@ -118,7 +108,8 @@ class SimCLR(pl.LightningModule):
         self.log(mode + "_loss", nll)
         # Get ranking position of positive example
         comb_sim = torch.cat(
-            [cos_sim[pos_mask][:, None], cos_sim.masked_fill(pos_mask, -9e15)],  # First position positive example
+            # First position positive example
+            [cos_sim[pos_mask][:, None], cos_sim.masked_fill(pos_mask, -9e15)],
             dim=-1,
         )
         sim_argsort = comb_sim.argsort(dim=-1, descending=True).argmin(dim=-1)
@@ -134,31 +125,43 @@ class SimCLR(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         self.info_nce_loss(batch, mode="val")
+'''
 
 
 class LitSimCLR(pl.LightningModule):
-    # PyTorch Lightning Implementation of SimCLR as manually implemented via A E Foster
-    def __init__(self, net, proj, critic, batch_size, sub_batch_size, lr, momentum, cosine_anneal, num_epochs, alpha, n_classes, test_freq, testloader):
+    # PyTorch Lightning Implementation of SimCLR
+    # as manually implemented via A E Foster
+    def __init__(self, net, proj, critic, batch_size, sub_batch_size, lr,
+                 momentum, cosine_anneal, num_epochs, alpha, n_classes,
+                 test_freq, testloader):
         super().__init__()
         self.net = net
         self.proj = proj
         self.critic = critic
         self.batch_size = batch_size
         self.sub_batch_size = sub_batch_size
-        self.lr, self.momentum, self.cosine_anneal, self.num_epochs, self.alpha, self.n_classes, self.test_freq, self.testloader = lr, momentum, cosine_anneal, num_epochs, alpha, n_classes, test_freq, testloader
+        self.lr, self.momentum, self.cosine_anneal, self.num_epochs, \
+            self.alpha, self.n_classes, self.test_freq, self.testloader = \
+            lr, momentum, cosine_anneal, num_epochs, alpha, n_classes,
+        test_freq, testloader
         self.save_hyperparameters(ignore=['critic', 'proj', 'net'])
 
     def custom_histogram_adder(self):
         # iterating through all parameters
         for name, params in self.named_parameters():
-            self.logger.experiment.add_histogram(name, params, self.current_epoch)
+            self.logger.experiment.add_histogram(name,
+                                                 params,
+                                                 self.current_epoch)
 
     def configure_optimizers(self):
-        base_optimizer = optim.SGD(list(self.net.parameters()) + list(self.proj.parameters()),
+        base_optimizer = optim.SGD(list(self.net.parameters())
+                                   + list(self.proj.parameters()),
                                    #    + list(self.critic.parameters()),
-                                   lr=self.lr, weight_decay=1e-6, momentum=self.momentum)
+                                   lr=self.lr, weight_decay=1e-6,
+                                   momentum=self.momentum)
         if self.cosine_anneal:
-            self.scheduler = CosineAnnealingWithLinearRampLR(base_optimizer, self.num_epochs)
+            self.scheduler = CosineAnnealingWithLinearRampLR(base_optimizer,
+                                                             self.num_epochs)
         # encoder_optimizer = LARS(base_optimizer, trust_coef=1e-3)
         encoder_optimizer = base_optimizer
         return encoder_optimizer
@@ -169,8 +172,13 @@ class LitSimCLR(pl.LightningModule):
 
         # graph logging
         if self.current_epoch == 0:
-            self.logger.experiment.add_graph(self.net, torch.randn(1, self.batch_size, 1000))
-        if (self.test_freq > 0) and (self.current_epoch % (self.test_freq*2) == ((self.test_freq*2) - 1)):
+            self.logger.experiment.add_graph(self.net,
+                                             torch.randn(1,
+                                                         self.batch_size,
+                                                         1000))
+        if (self.test_freq > 0) and (self.current_epoch %
+                                     (self.test_freq*2) ==
+                                     ((self.test_freq*2) - 1)):
             self.custom_histogram_adder()
 
         # x1, x2 = x1.to(device), x2.to(device)
@@ -178,7 +186,8 @@ class LitSimCLR(pl.LightningModule):
         representation1, representation2 = self.net(x1), self.net(x2)
         # projection head for contrastive loss
         # optional: instead pass representations directly; benefit?
-        representation1, representation2 = self.proj.project(representation1), self.proj.project(representation2)
+        representation1 = self.proj.project(representation1)
+        representation2 = self.proj.project(representation2)
         # labels1 = latent_clf(representation1)
         # labels2 = latent_clf(representation2)
 
@@ -186,7 +195,8 @@ class LitSimCLR(pl.LightningModule):
         # if labels is None:
         # np.unique() avoids repeating supervised class labels
         classes = np.unique(targets)
-        labels = torch.arange(len(classes)-1, representation1.shape[0] + len(classes)-1)
+        labels = torch.arange(len(classes)-1,
+                              representation1.shape[0] + len(classes)-1)
         # semi-supervised: define labels for labeled data
         if np.count_nonzero(targets != -1) > 0:
             labels[targets != -1] = targets
@@ -197,14 +207,17 @@ class LitSimCLR(pl.LightningModule):
             curr_emb = representation1[s:s+self.sub_batch_size]
             curr_labels = labels[s:s+self.sub_batch_size]
             # apply loss across all of the second representations
-            curr_loss = self.critic(curr_emb, curr_labels, ref_emb=representation2, ref_labels=labels)
+            curr_loss = self.critic(curr_emb, curr_labels,
+                                    ref_emb=representation2,
+                                    ref_labels=labels)
             # scaled (only) for supervised contrastive loss term
             for c in classes:
                 if np.count_nonzero(curr_labels == c) > 0:
                     curr_loss[curr_labels == c] *= self.alpha
             all_losses.append(curr_loss['loss']['losses'])
             # ignore 0 loss when sub_batch is not full
-            all_losses = [loss for loss in all_losses if not isinstance(loss, int)]
+            all_losses = [loss for loss in all_losses
+                          if not isinstance(loss, int)]
 
         # summarize loss and calculate gradient
         all_losses = torch.cat(all_losses, dim=0)
@@ -229,7 +242,8 @@ class LitSimCLR(pl.LightningModule):
 
             criterion = nn.CrossEntropyLoss()
             n_lbfgs_steps = 500
-            # Should be reset after each epoch for a completely independent evaluation
+            # Should be reset after each epoch
+            # for a completely independent evaluation
             self.clf = nn.Linear(representations[1].shape[0], 2)
             clf_optimizer = optim.LBFGS(self.clf.parameters(), lr=1e-2)
             self.clf.train()
@@ -251,16 +265,28 @@ class LitSimCLR(pl.LightningModule):
             correct = predicted.eq(targets).sum().item()
             loss = criterion(raw_scores, targets).item()
             total = targets.size(0)
-            cmat = ConfusionMatrix(task='binary', num_classes=self.n_classes)(predicted, targets)
+            cmat = ConfusionMatrix(task='binary',
+                                   num_classes=self.n_classes)(predicted,
+                                                               targets)
             acc = 100. * correct / total
-            bacc = 0.5 * ((cmat[0][0] / (cmat[0][0] + cmat[0][1])) + (cmat[1][1] / (cmat[1][1] + cmat[1][0])))
-            print('Loss: %.3f | Train Acc: %.3f%% ' % (loss, 100. * correct / targets.shape[0]))
-            self.log_dict({'val_acc': acc, 'val_bacc': bacc, 'val_tn': cmat[0][0], 'val_fp': cmat[0][1], 'val_fn': cmat[1][0], 'val_tp': cmat[1][1], 'val_loss': loss})
+            bacc = 0.5 * ((cmat[0][0] / (cmat[0][0] + cmat[0][1]))
+                          + (cmat[1][1] / (cmat[1][1] + cmat[1][0])))
+            print('Loss: %.3f | Train Acc: %.3f%% ' %
+                  (loss, 100. * correct / targets.shape[0]))
+            self.log_dict({'val_acc': acc,
+                           'val_bacc': bacc,
+                           'val_tn': cmat[0][0],
+                           'val_fp': cmat[0][1],
+                           'val_fn': cmat[1][0],
+                           'val_tp': cmat[1][1],
+                           'val_loss': loss})
 
         # rolling test/validation
         with torch.no_grad():
-            t = tqdm(enumerate(self.testloader), total=len(self.testloader), desc='Loss: **** | Test Acc: ****% ',
-                    bar_format='{desc}{bar}{r_bar}')
+            t = tqdm(enumerate(self.testloader),
+                     total=len(self.testloader),
+                     desc='Loss: **** | Test Acc: ****% ',
+                     bar_format='{desc}{bar}{r_bar}')
             for batch_idx, batch in t:
                 _, bacc = self.test_step(batch, batch_idx)
 
@@ -273,7 +299,8 @@ class LitSimCLR(pl.LightningModule):
         correct = 0
         total = 0
         # if n_classes > 2:
-        #     confmat = ConfusionMatrix(task='multiclass', num_classes=n_classes)
+        #     confmat = ConfusionMatrix(task='multiclass',
+        #                               num_classes=n_classes)
         #     cmat = torch.zeros(n_classes, n_classes)
         # else:
         confmat = ConfusionMatrix(task='binary', num_classes=self.n_classes)
@@ -290,18 +317,24 @@ class LitSimCLR(pl.LightningModule):
         correct += predicted.eq(targets).sum().item()
         cmat += confmat(predicted, targets)
 
-        print('Loss: %.3f | Test Acc: %.3f%% ' % (test_clf_loss / (batch_idx + 1), 100. * correct / total))
+        print('Loss: %.3f | Test Acc: %.3f%% ' %
+              (test_clf_loss / (batch_idx + 1), 100. * correct / total))
 
         acc = 100. * correct / total
-        bacc = 0.5 * ((cmat[0][0] / (cmat[0][0] + cmat[0][1])) + (cmat[1][1] / (cmat[1][1] + cmat[1][0])))
-        self.log_dict({'test_acc': acc, 'test_bacc': bacc, 'test_tn': cmat[0][0], 'test_fp': cmat[0][1], 'test_fn': cmat[1][0], 'test_tp': cmat[1][1], 'test_loss': test_clf_loss})
+        bacc = 0.5 * ((cmat[0][0] / (cmat[0][0] + cmat[0][1]))
+                      + (cmat[1][1] / (cmat[1][1] + cmat[1][0])))
+        self.log_dict({'test_acc': acc, 'test_bacc': bacc,
+                       'test_tn': cmat[0][0], 'test_fp': cmat[0][1],
+                       'test_fn': cmat[1][0], 'test_tp': cmat[1][1],
+                       'test_loss': test_clf_loss})
         return predicted, bacc
-
 
     # def validation_step(self):
     #     X, y = encode_train_set(valloader, device, net)
-    #     clf = train_clf(X, y, self.net.representation_dim, 2, reg_weight=1e-5)
-    #     acc, bacc, cmat, test_loss = test(testloader, device, net, clf, num_classes)
+    #     clf = train_clf(X, y, self.net.representation_dim,
+    #                     2, reg_weight=1e-5)
+    #     acc, bacc, cmat, test_loss = test(testloader, device,
+    #                                       net, clf, num_classes)
     #     bacc_curve = np.append(bacc_curve, bacc)
     #     test_loss_curve = np.append(test_loss_curve, test_loss)
     #     confmat_curve = np.append(confmat_curve, cmat)
@@ -309,8 +342,11 @@ class LitSimCLR(pl.LightningModule):
     #     print(f'\t-> with confusion matrix = {cmat}')
     #     if acc > best_acc:
     #         best_acc = acc
-    #     # save_checkpoint(net, clf, critic, epoch, args, os.path.basename(__file__))
-    #     save_checkpoint(net, clf, critic, epoch, args, os.path.basename(__file__))
-    #     results = {'bacc_curve': bacc_curve, 'train_loss_curve': train_loss_curve,
-    #             'test_loss_curve': test_loss_curve, 'confmat_curve': confmat_curve}
-    #     joblib.dump(results, './checkpoint/'+args.filename+'-result_curves.joblib')
+    #     save_checkpoint(net, clf, critic, epoch,
+    #                     args, os.path.basename(__file__))
+    #     results = {'bacc_curve': bacc_curve,
+    #                'train_loss_curve': train_loss_curve,
+    #                'test_loss_curve': test_loss_curve,
+    #                'confmat_curve': confmat_curve}
+    #     joblib.dump(results,
+    #                 './checkpoint/'+args.filename+'-result_curves.joblib')

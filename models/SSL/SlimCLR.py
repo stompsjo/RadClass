@@ -4,7 +4,6 @@ import subprocess
 
 import torch
 import torch.backends.cudnn as cudnn
-import torch.nn as nn
 import torch.optim as optim
 # from torchlars import LARS
 from tqdm import tqdm
@@ -63,7 +62,8 @@ SOFTWARE.
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='PyTorch Contrastive Learning.')
+    parser = argparse.ArgumentParser(description='PyTorch'
+                                                 'Contrastive Learning.')
     parser.add_argument('--base-lr', default=0.25, type=float,
                         help='base learning rate, rescaled by batch_size/256')
     parser.add_argument("--momentum", default=0.9, type=float,
@@ -94,13 +94,14 @@ def parse_arguments():
     parser.add_argument("--arch", type=str, default='minos',
                         help='Encoder architecture',
                         choices=['minos', 'minos-curated', 'minos-2019',
-                                 'minos-2019-binary', 'resnet18', 'resnet34', 'resnet50'])
+                                 'minos-2019-binary', 'resnet18',
+                                 'resnet34', 'resnet50'])
     parser.add_argument("--num-workers", type=int, default=2,
                         help='Number of threads for data loaders')
     parser.add_argument("--test-freq", type=int, default=10,
-                        help='Frequency to fit a linear clf with L-BFGS for testing'
-                             'Not appropriate for large datasets. Set 0 to avoid '
-                             'classifier only training here.')
+                        help='Frequency to fit a clf with L-BFGS for testing.'
+                             'Not appropriate for large datasets.'
+                             'Set 0 to avoid classifier only training here.')
     parser.add_argument("--filename", type=str, default='ckpt',
                         help='Output file name')
     parser.add_argument('--in-dim', '-i', type=int,
@@ -167,13 +168,8 @@ def main():
     ##############################################################
     # Encoder
     ##############################################################
-    # if args.arch == 'resnet18':
-    #     net = ResNet18(stem=stem)
-    # elif args.arch == 'resnet34':
-    #     net = ResNet34(stem=stem)
-    # elif args.arch == 'resnet50':
-    #     net = ResNet50(stem=stem)
-    if args.arch in ['minos', 'minos-curated', 'minos-2019', 'minos-2019-binary']:
+    if args.arch in ['minos', 'minos-curated',
+                     'minos-2019', 'minos-2019-binary']:
         net = LinearNN(dim=args.in_dim, mid=args.mid,
                        n_layers=args.n_layers, dropout_rate=1.,
                        n_epochs=args.num_epochs, mid_bias=True,
@@ -203,7 +199,7 @@ def main():
     if args.resume:
         # Load checkpoint.
         print('==> Resuming from checkpoint..')
-        assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
+        assert os.path.isdir('checkpoint'), 'Error: no chkpt directory found!'
         resume_from = os.path.join('./checkpoint', args.resume)
         checkpoint = torch.load(resume_from)
         net.load_state_dict(checkpoint['net'])
@@ -211,14 +207,15 @@ def main():
         best_acc = checkpoint['acc']
         start_epoch = checkpoint['epoch']
 
-    # base_optimizer = optim.SGD(list(net.parameters()) + list(proj_head.parameters())
-    #                            + list(latent_clf.parameters()) + list(critic.parameters()),
-    #                            lr=args.lr, weight_decay=1e-6, momentum=args.momentum)
-    base_optimizer = optim.SGD(list(net.parameters()) + list(proj_head.parameters())
+    base_optimizer = optim.SGD(list(net.parameters())
+                               + list(proj_head.parameters())
                                + list(critic.parameters()),
-                               lr=args.lr, weight_decay=1e-6, momentum=args.momentum)
+                               # + list(latent_clf.parameters())
+                               lr=args.lr, weight_decay=1e-6,
+                               momentum=args.momentum)
     if args.cosine_anneal:
-        scheduler = CosineAnnealingWithLinearRampLR(base_optimizer, args.num_epochs)
+        scheduler = CosineAnnealingWithLinearRampLR(base_optimizer,
+                                                    args.num_epochs)
     # encoder_optimizer = LARS(base_optimizer, trust_coef=1e-3)
     encoder_optimizer = base_optimizer
 
@@ -229,7 +226,8 @@ def main():
         # critic.train()
         critic.train()
         train_loss = 0
-        t = tqdm(enumerate(trainloader), desc='Loss: **** ', total=len(trainloader), bar_format='{desc}{bar}{r_bar}')
+        t = tqdm(enumerate(trainloader), desc='Loss: **** ',
+                 total=len(trainloader), bar_format='{desc}{bar}{r_bar}')
         for batch_idx, (inputs, _, _) in t:
             x1, x2 = inputs
             x1, x2 = x1.to(device), x2.to(device)
@@ -237,7 +235,8 @@ def main():
             representation1, representation2 = net(x1), net(x2)
             # projection head for contrastive loss
             # optional: instead pass representations directly; benefit?
-            representation1, representation2 = proj_head.project(representation1), proj_head.project(representation2)
+            representation1 = proj_head.project(representation1)
+            representation2 = proj_head.project(representation2)
             # labels1 = latent_clf(representation1)
             # labels2 = latent_clf(representation2)
 
@@ -250,10 +249,12 @@ def main():
                 curr_emb = representation1[s:s+sub_batch_size]
                 curr_labels = labels[s:s+sub_batch_size]
                 # apply loss across all of the second representations
-                curr_loss = critic(curr_emb, curr_labels, ref_emb=representation2, ref_labels=labels)
+                curr_loss = critic(curr_emb, curr_labels,
+                                   ref_emb=representation2, ref_labels=labels)
                 all_losses.append(curr_loss['loss']['losses'])
                 # ignore 0 loss when sub_batch is not full
-                all_losses = [loss for loss in all_losses if not isinstance(loss, int)]
+                all_losses = [loss for loss in all_losses
+                              if not isinstance(loss, int)]
 
             # summarize loss and calculate gradient
             all_losses = torch.cat(all_losses, dim=0)
@@ -280,14 +281,17 @@ def main():
             repeat=1),
         on_trace_ready=torch.profiler.tensorboard_trace_handler,
         with_stack=True
-    ) as profiler:
+    ):  # as profiler:
         for epoch in range(start_epoch, start_epoch + args.num_epochs):
             train_loss = train(epoch)
             train_loss_curve = np.append(train_loss_curve, train_loss)
-            if (args.test_freq > 0) and (epoch % args.test_freq == (args.test_freq - 1)):
+            if (args.test_freq > 0) and (epoch % args.test_freq
+                                         == (args.test_freq - 1)):
                 X, y = encode_train_set(valloader, device, net)
-                clf = train_clf(X, y, net.representation_dim, num_classes, device, reg_weight=1e-5)
-                acc, bacc, cmat, test_loss = test(testloader, device, net, clf, num_classes)
+                clf = train_clf(X, y, net.representation_dim,
+                                num_classes, device, reg_weight=1e-5)
+                acc, bacc, cmat, test_loss = test(testloader, device,
+                                                  net, clf, num_classes)
                 bacc_curve = np.append(bacc_curve, bacc)
                 test_loss_curve = np.append(test_loss_curve, test_loss)
                 confmat_curve = np.append(confmat_curve, cmat)
@@ -295,14 +299,18 @@ def main():
                 print(f'\t-> with confusion matrix = {cmat}')
                 if acc > best_acc:
                     best_acc = acc
-                # save_checkpoint(net, clf, critic, epoch, args, os.path.basename(__file__))
-                save_checkpoint(net, clf, critic, epoch, args, os.path.basename(__file__))
-                results = {'bacc_curve': bacc_curve, 'train_loss_curve': train_loss_curve,
-                        'test_loss_curve': test_loss_curve, 'confmat_curve': confmat_curve}
-                joblib.dump(results, './checkpoint/'+args.filename+'-result_curves.joblib')
+                save_checkpoint(net, clf, critic, epoch,
+                                args, os.path.basename(__file__))
+                results = {'bacc_curve': bacc_curve,
+                           'train_loss_curve': train_loss_curve,
+                           'test_loss_curve': test_loss_curve,
+                           'confmat_curve': confmat_curve}
+                joblib.dump(results,
+                            './checkpoint/'
+                            + args.filename+'-result_curves.joblib')
             elif args.test_freq == 0:
-                # save_checkpoint(net, clf, critic, epoch, args, os.path.basename(__file__))
-                save_checkpoint(net, clf, critic, epoch, args, os.path.basename(__file__))
+                save_checkpoint(net, clf, critic, epoch,
+                                args, os.path.basename(__file__))
             if args.cosine_anneal:
                 scheduler.step()
 
