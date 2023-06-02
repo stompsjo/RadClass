@@ -131,7 +131,12 @@ class DANSE:
             channel resampling (see above)
         '''
 
-        augmentation = np.random.poisson(lam=X)
+        # lambda = n*p using constant probability
+        p = 0.5
+        n = X / p
+        # augmentation = np.random.poisson(lam=X)
+        # using binomial distribution for accurate low-count sampling
+        augmentation = np.random.binomial(n=n, p=p)
 
         return augmentation
 
