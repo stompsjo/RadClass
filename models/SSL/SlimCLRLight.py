@@ -1,8 +1,10 @@
 import argparse
 import os
 import subprocess
+import glob
 
 import torch
+import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import lightning.pytorch as pl
 # from torchlars import LARS
@@ -72,7 +74,7 @@ def parse_arguments():
                         help='base learning rate, rescaled by batch_size/256')
     parser.add_argument("--momentum", default=0.9, type=float,
                         help='SGD momentum')
-    parser.add_argument('--resume', '-r', type=str, default='',
+    parser.add_argument('--resume', '-r', type=str, default=None,
                         help='resume from checkpoint with this filename')
     parser.add_argument('--dataset', '-d', type=str, default='minos',
                         help='dataset keyword',
@@ -130,6 +132,7 @@ def parse_arguments():
 
 
 def main():
+    torch.set_printoptions(profile='full')
     logging.basicConfig(filename='debug.log',
                         filemode='a',
                         level=logging.INFO)
@@ -167,7 +170,7 @@ def main():
         full_trainset = torch.utils.data.ConcatDataset([trainset, ssmlset])
     else:
         full_trainset = trainset
-    trainloader = torch.utils.data.DataLoader(trainset,
+    trainloader = torch.utils.data.DataLoader(full_trainset,
                                               batch_size=args.batch_size,
                                               shuffle=True,
                                               num_workers=args.num_workers,
@@ -175,12 +178,14 @@ def main():
     valloader = torch.utils.data.DataLoader(valset,
                                             batch_size=args.batch_size,
                                             shuffle=False,
-                                            num_workers=args.num_workers,
+                                            # num_workers=args.num_workers,
+                                            num_workers=0,
                                             pin_memory=pin_memory)
     testloader = torch.utils.data.DataLoader(testset,
                                              batch_size=args.batch_size,
                                              shuffle=False,
-                                             num_workers=args.num_workers,
+                                             #  num_workers=args.num_workers,
+                                             num_workers=0,
                                              pin_memory=pin_memory)
 
     # Model
@@ -197,6 +202,7 @@ def main():
     else:
         raise ValueError("Bad architecture specification")
     net = net.to(device)
+    clf = nn.Linear(args.mid[-1], args.n_classes)
     print(f'net dimensions={net.representation_dim}')
 
     ##############################################################
@@ -216,26 +222,33 @@ def main():
         net.representation_dim = repr_dim
         cudnn.benchmark = True
 
-    if args.resume:
-        # Load checkpoint.
-        print('==> Resuming from checkpoint..')
-        assert os.path.isdir('checkpoint'), \
-            'Error: no checkpoint directory found!'
-        resume_from = os.path.join('./checkpoint', args.resume)
-        checkpoint = torch.load(resume_from)
-        net.load_state_dict(checkpoint['net'])
-        critic.load_state_dict(checkpoint['critic'])
+    # if args.resume:
+    #     # Load checkpoint.
+    #     print('==> Resuming from checkpoint..')
+    #     assert os.path.isdir('checkpoint'), \
+    #         'Error: no checkpoint directory found!'
+    #     resume_from = os.path.join('./checkpoint', args.resume)
+    #     checkpoint = torch.load(resume_from)
+    #     net.load_state_dict(checkpoint['net'])
+    #     critic.load_state_dict(checkpoint['critic'])
 
     # make checkpoint directory
     ckpt_path = './checkpoint/'+args.filename+'/'
     if not os.path.isdir(ckpt_path):
         os.mkdir(ckpt_path)
 
+    # if args.resume:
+    #     # the last version run
+    #     last_ver = glob.glob(ckpt_path+'lightning_logs/version_*/')[-1]
+    #     ckpt = ckpt_path + last_ver + glob.glob(last_ver+'checkpoints/*.ckpt')[-1]
+    # else:
+    #     ckpt = None
+
     # save statistical data
     joblib.dump(trainset.mean, ckpt_path+args.filename+'-train_means.joblib')
     joblib.dump(trainset.std, ckpt_path+args.filename+'-train_stds.joblib')
 
-    lightning_model = LitSimCLR(net, proj_head, critic, args.batch_size,
+    lightning_model = LitSimCLR(clf, net, proj_head, critic, args.batch_size,
                                 sub_batch_size, args.lr, args.momentum,
                                 args.cosine_anneal, args.num_epochs,
                                 args.alpha, num_classes, args.test_freq,
@@ -247,7 +260,7 @@ def main():
                          profiler='simple', limit_train_batches=0.75,
                          logger=tb_logger, num_sanity_val_steps=0)
     trainer.fit(model=lightning_model, train_dataloaders=trainloader,
-                val_dataloaders=valloader)
+                val_dataloaders=valloader, ckpt_path=args.resume)
     trainer.test(model=lightning_model, dataloaders=testloader)
 
 

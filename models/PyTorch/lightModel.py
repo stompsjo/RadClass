@@ -131,19 +131,18 @@ class SimCLR(pl.LightningModule):
 class LitSimCLR(pl.LightningModule):
     # PyTorch Lightning Implementation of SimCLR
     # as manually implemented via A E Foster
-    def __init__(self, net, proj, critic, batch_size, sub_batch_size, lr,
+    def __init__(self, clf, net, proj, critic, batch_size, sub_batch_size, lr,
                  momentum, cosine_anneal, num_epochs, alpha, n_classes,
                  test_freq, testloader):
         super().__init__()
+        # intiialize linear classifier used in validation and testing
+        self.clf = clf
         self.net = net
         self.proj = proj
         self.critic = critic
         self.batch_size = batch_size
         self.sub_batch_size = sub_batch_size
-        self.lr, self.momentum, self.cosine_anneal, self.num_epochs, \
-            self.alpha, self.n_classes, self.test_freq, self.testloader = \
-            lr, momentum, cosine_anneal, num_epochs, alpha, n_classes,
-        test_freq, testloader
+        self.lr, self.momentum, self.cosine_anneal, self.num_epochs, self.alpha, self.n_classes, self.test_freq, self.testloader = lr, momentum, cosine_anneal, num_epochs, alpha, n_classes, test_freq, testloader
         self.save_hyperparameters(ignore=['critic', 'proj', 'net'])
 
     def custom_histogram_adder(self):
@@ -191,15 +190,15 @@ class LitSimCLR(pl.LightningModule):
         # labels1 = latent_clf(representation1)
         # labels2 = latent_clf(representation2)
 
-        # each (x1i, x2i) is a positive pair
-        # if labels is None:
-        # np.unique() avoids repeating supervised class labels
-        classes = np.unique(targets)
-        labels = torch.arange(len(classes)-1,
-                              representation1.shape[0] + len(classes)-1)
         # semi-supervised: define labels for labeled data
-        if np.count_nonzero(targets != -1) > 0:
-            labels[targets != -1] = targets
+        # each (x1i, x2i) is a positive pair
+        labels = targets.detach().clone()
+        # -1 for the unlabeled class in targets
+        # providing a unique label for each unlabeled instance
+        # self.n_classes avoids repeating supervised class labels
+        labels[labels == -1] = torch.arange(self.n_classes,
+                                            len(labels[labels == -1])
+                                            + self.n_classes)
         # sub-batching to preserve memory
         all_losses = []
         for s in range(0, self.batch_size, self.sub_batch_size):
@@ -210,10 +209,18 @@ class LitSimCLR(pl.LightningModule):
             curr_loss = self.critic(curr_emb, curr_labels,
                                     ref_emb=representation2,
                                     ref_labels=labels)
+            print_out = curr_loss['loss']['losses']
             # scaled (only) for supervised contrastive loss term
-            for c in classes:
-                if np.count_nonzero(curr_labels == c) > 0:
-                    curr_loss[curr_labels == c] *= self.alpha
+            # NOTE: if multiple positive samples appear, there will be one loss
+            # for each positive pair (i.e. more than one loss per class).
+            for c in range(self.n_classes):
+                if torch.any(curr_labels == c):
+                    # check for more than one positive pair
+                    indices = torch.where(
+                        torch.isin(curr_loss['loss']['indices'][1],
+                                   torch.where(labels == c)[0]))[0]
+                    # scale losses that match with indices for positive pairs
+                    curr_loss['loss']['losses'][indices] *= self.alpha
             all_losses.append(curr_loss['loss']['losses'])
             # ignore 0 loss when sub_batch is not full
             all_losses = [loss for loss in all_losses
