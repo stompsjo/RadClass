@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 # from torchlars import LARS
+# from flash.core import LARS
 from tqdm import tqdm
 
 import sys
@@ -162,8 +163,8 @@ class LitSimCLR(pl.LightningModule):
                                    #    + list(self.critic.parameters()),
                                    lr=self.lr, weight_decay=1e-6,
                                    momentum=self.momentum)
-        # optimizer_kwargs = dict(lr=0.001, betas=(0.8, 0.99), weight_decay=1e-6)
-        # self.optimizer = torch.optim.AdamW(self.parameters(),
+        # optimizer_kwargs = dict(lr=self.lr, betas=(0.8, 0.99), weight_decay=1e-6)
+        # base_optimizer = torch.optim.AdamW(self.parameters(),
         #                                    **optimizer_kwargs)
 
         if self.cosine_anneal:
@@ -172,7 +173,7 @@ class LitSimCLR(pl.LightningModule):
         # encoder_optimizer = LARS(base_optimizer, trust_coef=1e-3)
         encoder_optimizer = base_optimizer
         return encoder_optimizer
-    
+
     # see above for EMA update
     # def on_before_zero_grad(self, *args, **kwargs):
     #     self.ema.update(self.proj.parameters())
@@ -294,10 +295,10 @@ class LitSimCLR(pl.LightningModule):
                   (loss, 100. * correct / targets.shape[0]))
             self.log_dict({'val_acc': acc,
                            'val_bacc': bacc,
-                           'val_tn': cmat[0][0],
-                           'val_fp': cmat[0][1],
-                           'val_fn': cmat[1][0],
-                           'val_tp': cmat[1][1],
+                           'val_tn': float(cmat[0][0]),
+                           'val_fp': float(cmat[0][1]),
+                           'val_fn': float(cmat[1][0]),
+                           'val_tp': float(cmat[1][1]),
                            'val_loss': loss})
 
         # rolling test/validation
@@ -343,8 +344,10 @@ class LitSimCLR(pl.LightningModule):
         bacc = 0.5 * ((cmat[0][0] / (cmat[0][0] + cmat[0][1]))
                       + (cmat[1][1] / (cmat[1][1] + cmat[1][0])))
         self.log_dict({'test_acc': acc, 'test_bacc': bacc,
-                       'test_tn': cmat[0][0], 'test_fp': cmat[0][1],
-                       'test_fn': cmat[1][0], 'test_tp': cmat[1][1],
+                       'test_tn': float(cmat[0][0]),
+                       'test_fp': float(cmat[0][1]),
+                       'test_fn': float(cmat[1][0]),
+                       'test_tp': float(cmat[1][1]),
                        'test_loss': test_clf_loss})
         return predicted, bacc
 
