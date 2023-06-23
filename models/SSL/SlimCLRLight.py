@@ -162,6 +162,7 @@ def main():
                                                       args.testfpath,
                                                       args.normalization,
                                                       args.accounting)
+    print(f'ssml dataset={ssmlset}')
 
     pin_memory = True if device == 'cuda' else False
     print(f'pin_memory={pin_memory}')

@@ -209,7 +209,7 @@ class LitSimCLR(pl.LightningModule):
             curr_loss = self.critic(curr_emb, curr_labels,
                                     ref_emb=representation2,
                                     ref_labels=labels)
-            print_out = curr_loss['loss']['losses']
+
             # scaled (only) for supervised contrastive loss term
             # NOTE: if multiple positive samples appear, there will be one loss
             # for each positive pair (i.e. more than one loss per class).

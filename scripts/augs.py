@@ -136,7 +136,7 @@ class DANSE:
         n = X / p
         # augmentation = np.random.poisson(lam=X)
         # using binomial distribution for accurate low-count sampling
-        augmentation = np.random.binomial(n=n, p=p)
+        augmentation = np.random.binomial(n=n.astype(int), p=p)
 
         return augmentation
 

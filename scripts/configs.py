@@ -102,9 +102,10 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None,
             val_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean,
                                                  tr_dset.std,
                                                  accounting=accounting))
-            ssml_dset = add_indices(DataBiaugment(Xval, yval, transform_train,
-                                                  tr_dset.mean, tr_dset.std,
-                                                  accounting=accounting))
+            if dataset == 'minos-ssml':
+                ssml_dset = add_indices(DataBiaugment(Xval, yval, transform_train,
+                                                    tr_dset.mean, tr_dset.std,
+                                                    accounting=accounting))
             test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean,
                                                   tr_dset.std,
                                                   accounting=accounting))
@@ -114,9 +115,10 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None,
                                      accounting=accounting)
             val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std,
                                      accounting=accounting)
-            ssml_dset = DataBiaugment(Xval, yval, transform_train,
-                                      tr_dset.mean, tr_dset.std,
-                                      accounting=accounting)
+            if dataset == 'minos-ssml':
+                ssml_dset = DataBiaugment(Xval, yval, transform_train,
+                                        tr_dset.mean, tr_dset.std,
+                                        accounting=accounting)
             test_dset = DataOrganizer(Xtest, ytest, tr_dset.mean,
                                       tr_dset.std, accounting=accounting)
     elif dataset in ['minos-curated', 'minos-transfer-ssml']:
@@ -158,9 +160,10 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None,
             val_dset = add_indices(DataOrganizer(Xval, yval, tr_dset.mean,
                                                  tr_dset.std,
                                                  accounting=accounting))
-            ssml_dset = add_indices(DataBiaugment(Xval, yval, transform_train,
-                                                  tr_dset.mean, tr_dset.std,
-                                                  accounting=accounting))
+            if dataset == 'minos-transfer-ssml':
+                ssml_dset = add_indices(DataBiaugment(Xval, yval, transform_train,
+                                                    tr_dset.mean, tr_dset.std,
+                                                    accounting=accounting))
             test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean,
                                                   tr_dset.std,
                                                   accounting=accounting))
@@ -170,9 +173,10 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None,
                                      accounting=accounting)
             val_dset = DataOrganizer(Xval, yval, tr_dset.mean, tr_dset.std,
                                      accounting=accounting)
-            ssml_dset = DataBiaugment(Xval, yval, transform_train,
-                                      tr_dset.mean, tr_dset.std,
-                                      accounting=accounting)
+            if dataset == 'minos-transfer-ssml':
+                ssml_dset = DataBiaugment(Xval, yval, transform_train,
+                                        tr_dset.mean, tr_dset.std,
+                                        accounting=accounting)
             test_dset = DataOrganizer(Xtest, ytest, tr_dset.mean, tr_dset.std,
                                       accounting=accounting)
     elif dataset == 'minos-2019':
