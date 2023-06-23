@@ -137,7 +137,10 @@ def main():
                         filemode='a',
                         level=logging.INFO)
     args = parse_arguments()
-    args.lr = args.base_lr * (args.batch_size / 256)
+    if args.batch_size <= 1024:
+        args.lr = args.base_lr * (np.sqrt(args.batch_size) / 256)
+    else:
+        args.lr = args.base_lr * (args.batch_size / 256)
 
     args.git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'])
     args.git_diff = subprocess.check_output(['git', 'diff'])

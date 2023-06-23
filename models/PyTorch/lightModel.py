@@ -145,6 +145,10 @@ class LitSimCLR(pl.LightningModule):
         self.lr, self.momentum, self.cosine_anneal, self.num_epochs, self.alpha, self.n_classes, self.test_freq, self.testloader = lr, momentum, cosine_anneal, num_epochs, alpha, n_classes, test_freq, testloader
         self.save_hyperparameters(ignore=['critic', 'proj', 'net'])
 
+        # EMA update for projection head to boost performance (see SSL Cookbook)
+        # must use additional library: https://github.com/fadel/pytorch_ema
+        # self.ema = ExponentialMovingAverage(self.encoder.parameters(), decay=0.995)
+
     def custom_histogram_adder(self):
         # iterating through all parameters
         for name, params in self.named_parameters():
@@ -158,12 +162,20 @@ class LitSimCLR(pl.LightningModule):
                                    #    + list(self.critic.parameters()),
                                    lr=self.lr, weight_decay=1e-6,
                                    momentum=self.momentum)
+        # optimizer_kwargs = dict(lr=0.001, betas=(0.8, 0.99), weight_decay=1e-6)
+        # self.optimizer = torch.optim.AdamW(self.parameters(),
+        #                                    **optimizer_kwargs)
+
         if self.cosine_anneal:
             self.scheduler = CosineAnnealingWithLinearRampLR(base_optimizer,
                                                              self.num_epochs)
         # encoder_optimizer = LARS(base_optimizer, trust_coef=1e-3)
         encoder_optimizer = base_optimizer
         return encoder_optimizer
+    
+    # see above for EMA update
+    # def on_before_zero_grad(self, *args, **kwargs):
+    #     self.ema.update(self.proj.parameters())
 
     def training_step(self, batch, batch_idx):
         inputs, targets, _ = batch
