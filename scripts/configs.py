@@ -54,19 +54,33 @@ def add_indices(dataset_cls):
 
 def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None,
                  testfpath=None, normalization=False, accounting=False,
-                 add_indices_to_data=False):
+                 augs=None, add_indices_to_data=False):
     # , augment_clf_train=False, num_positive=None):
 
     ssml_dset = None
-    transform_train = [
-        transforms.Background(bckg_dir=bckg_fpath, mode='beads'),
-        transforms.Resample(),
-        transforms.Sig2Bckg(bckg_dir=bckg_fpath, mode='beads', r=(0.5, 1.5)),
-        transforms.Nuclear(binE=3),
-        transforms.Resolution(multiplier=(0.5, 1.5)),
-        transforms.Mask(),
-        transforms.GainShift()
-    ]
+    transform_dict = dict(
+        'Background': transforms.Background(bckg_dir=bckg_fpath, mode='beads'),
+        'Resample': transforms.Resample(),
+        'Sig2Bckg': transforms.Sig2Bckg(bckg_dir=bckg_fpath, mode='beads', r=(0.5, 1.5)),
+        'Nuclear': transforms.Nuclear(binE=3),
+        'Resolution': transforms.Resolution(multiplier=(0.5, 1.5)),
+        'Mask': transforms.Mask(),
+        'GainShift': transforms.GainShift()
+    )
+    transform_train = []
+    if augs is not None:
+        for key in augs:
+            transform_train.append(transform_dict[key])
+    else:
+        transform_train = [
+            transforms.Background(bckg_dir=bckg_fpath, mode='beads'),
+            transforms.Resample(),
+            transforms.Sig2Bckg(bckg_dir=bckg_fpath, mode='beads', r=(0.5, 1.5)),
+            transforms.Nuclear(binE=3),
+            transforms.Resolution(multiplier=(0.5, 1.5)),
+            transforms.Mask(),
+            transforms.GainShift()
+        ]
 
     if dataset in ['minos', 'minos-ssml']:
         data = pd.read_hdf(dset_fpath, key='data')
@@ -103,9 +117,11 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None,
                                                  tr_dset.std,
                                                  accounting=accounting))
             if dataset == 'minos-ssml':
-                ssml_dset = add_indices(DataBiaugment(Xval, yval, transform_train,
-                                                    tr_dset.mean, tr_dset.std,
-                                                    accounting=accounting))
+                ssml_dset = add_indices(DataBiaugment(Xval.copy(), yval.copy(),
+                                                      transform_train,
+                                                      tr_dset.mean,
+                                                      tr_dset.std,
+                                                      accounting=accounting))
             test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean,
                                                   tr_dset.std,
                                                   accounting=accounting))
@@ -161,9 +177,11 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None,
                                                  tr_dset.std,
                                                  accounting=accounting))
             if dataset == 'minos-transfer-ssml':
-                ssml_dset = add_indices(DataBiaugment(Xval, yval, transform_train,
-                                                    tr_dset.mean, tr_dset.std,
-                                                    accounting=accounting))
+                ssml_dset = add_indices(DataBiaugment(Xval.copy(), yval.copy(),
+                                                      transform_train,
+                                                      tr_dset.mean,
+                                                      tr_dset.std,
+                                                      accounting=accounting))
             test_dset = add_indices(DataOrganizer(Xtest, ytest, tr_dset.mean,
                                                   tr_dset.std,
                                                   accounting=accounting))

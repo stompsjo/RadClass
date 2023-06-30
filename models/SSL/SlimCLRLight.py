@@ -126,6 +126,8 @@ def parse_arguments():
                         help='number of classes/labels in projection head')
     parser.add_argument('--alpha', '-a', type=float, default=0.999,
                         help='weight for semi-supervised contrastive loss')
+    parser.add_argument('--augs', '-u', type=str, nargs='+', default=None,
+                        help='list of augmentations to be applied in SSL')
 
     args = parser.parse_args()
     return args
@@ -164,7 +166,8 @@ def main():
                                                       args.valfpath,
                                                       args.testfpath,
                                                       args.normalization,
-                                                      args.accounting)
+                                                      args.accounting,
+                                                      args.augs)
     print(f'ssml dataset={ssmlset}')
 
     pin_memory = True if device == 'cuda' else False
