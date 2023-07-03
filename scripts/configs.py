@@ -58,7 +58,7 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None,
     # , augment_clf_train=False, num_positive=None):
 
     ssml_dset = None
-    transform_dict = dict(
+    transform_dict = {
         'Background': transforms.Background(bckg_dir=bckg_fpath, mode='beads'),
         'Resample': transforms.Resample(),
         'Sig2Bckg': transforms.Sig2Bckg(bckg_dir=bckg_fpath, mode='beads', r=(0.5, 1.5)),
@@ -66,7 +66,7 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None,
         'Resolution': transforms.Resolution(multiplier=(0.5, 1.5)),
         'Mask': transforms.Mask(),
         'GainShift': transforms.GainShift()
-    )
+    }
     transform_train = []
     if augs is not None:
         for key in augs:
@@ -81,6 +81,9 @@ def get_datasets(dataset, dset_fpath, bckg_fpath, valsfpath=None,
             transforms.Mask(),
             transforms.GainShift()
         ]
+    print('list of transformations:')
+    for t in transform_train:
+        print(f'\t{t}')
 
     if dataset in ['minos', 'minos-ssml']:
         data = pd.read_hdf(dset_fpath, key='data')
