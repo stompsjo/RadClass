@@ -6,7 +6,7 @@ import pandas as pd
 from sklearn.metrics import r2_score
 
 import sys
-sys.path.append('/mnt/palpatine/u9f/RadClass/models/PyTorch/')
+sys.path.append('$PWD/RadClass/models/PyTorch/')
 from critic import MSELoss
 
 import torch

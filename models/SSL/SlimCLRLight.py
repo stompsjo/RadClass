@@ -10,9 +10,9 @@ import lightning.pytorch as pl
 # from torchlars import LARS
 
 import sys
-sys.path.append('/mnt/palpatine/u9f/RadClass/scripts/')
-sys.path.append('/mnt/palpatine/u9f/RadClass/models/PyTorch/')
-sys.path.append('/mnt/palpatine/u9f/RadClass/models/SSL/')
+sys.path.append('$PWD/RadClass/scripts/')
+sys.path.append('$PWD/RadClass/models/PyTorch/')
+sys.path.append('$PWD/RadClass/models/SSL/')
 
 from configs import get_datasets
 from critic import LinearCritic

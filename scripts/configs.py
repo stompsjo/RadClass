@@ -31,8 +31,8 @@ SOFTWARE.
 # import torchvision.transforms as transforms
 
 import sys
-sys.path.append('/mnt/palpatine/u9f/RadClass/scripts/')
-sys.path.append('/mnt/palpatine/u9f/RadClass/data/')
+sys.path.append('$PWD/RadClass/scripts/')
+sys.path.append('$PWD/RadClass/data/')
 # from augmentation import ColourDistortion
 from dataset import MINOSBiaugment, DataOrganizer, DataBiaugment
 from specTools import read_h_file

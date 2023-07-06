@@ -5,7 +5,7 @@ from scipy.stats import loguniform
 import torch
 
 import sys
-sys.path.append('/mnt/palpatine/u9f/RadClass/scripts/')
+sys.path.append('$PWD/RadClass/scripts/')
 
 
 class Background(torch.nn.Module):
