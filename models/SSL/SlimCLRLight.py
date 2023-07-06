@@ -145,8 +145,8 @@ def main():
     else:
         args.lr = args.base_lr * (args.batch_size / 256)
 
-    args.git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'])
-    args.git_diff = subprocess.check_output(['git', 'diff'])
+    # args.git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'])
+    # args.git_diff = subprocess.check_output(['git', 'diff'])
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # for use with a GPU

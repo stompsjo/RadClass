@@ -86,10 +86,10 @@ class MINOSBiaugment(Dataset):
         spec, target = self.data[index], self.targets[index]
 
         # if self.transforms is not None:
-        aug1, aug2 = np.random.choice(self.transforms, size=2, replace=False)
-        logging.debug(f'{index}: aug1={aug1} and aug2={aug2}')
+        aug1 = np.random.choice(self.transforms, size=1, replace=False)
+        logging.debug(f'{index}: aug1={aug1}')
         spec1 = torch.FloatTensor(aug1(spec))
-        spec2 = torch.FloatTensor(aug2(spec))
+        spec2 = torch.FloatTensor(spec.copy())
 
         # remove background
         if self.accounting:
@@ -131,10 +131,10 @@ class DataBiaugment(Dataset):
         spec, target = self.data[index], self.targets[index]
 
         # if self.transforms is not None:
-        aug1, aug2 = np.random.choice(self.transforms, size=2, replace=False)
-        logging.debug(f'{index}: aug1={aug1} and aug2={aug2}')
+        aug1 = np.random.choice(self.transforms, size=1, replace=False)
+        logging.debug(f'{index}: aug1={aug1}')
         spec1 = torch.FloatTensor(aug1(spec))
-        spec2 = torch.FloatTensor(aug2(spec))
+        spec2 = torch.FloatTensor(spec.copy())
 
         # remove background
         if self.accounting:
