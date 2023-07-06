@@ -9,9 +9,9 @@ import torch.optim as optim
 from tqdm import tqdm
 
 import sys
-sys.path.append('$PWD/RadClass/scripts/')
-sys.path.append('$PWD/RadClass/models/PyTorch/')
-sys.path.append('$PWD/RadClass/models/SSL/')
+sys.path.append('$PWD/scripts/')
+sys.path.append('$PWD/models/PyTorch/')
+sys.path.append('$PWD/models/SSL/')
 
 from configs import get_datasets
 from critic import LinearCritic

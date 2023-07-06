@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 from augs import DANSE
 
 import sys
-sys.path.append('$PWD/RadClass/scripts/')
+sys.path.append('$PWD/scripts/')
 
 
 def remove_bckg(X):
