@@ -31,8 +31,9 @@ SOFTWARE.
 # import torchvision.transforms as transforms
 
 import sys
-sys.path.append('$PWD/scripts/')
-sys.path.append('$PWD/data/')
+import os
+sys.path.append(os.getcwd()+'/scripts/')
+sys.path.append(os.getcwd()+'/data/')
 # from augmentation import ColourDistortion
 from dataset import MINOSBiaugment, DataOrganizer, DataBiaugment
 from specTools import read_h_file

@@ -5,7 +5,8 @@ from scipy.stats import loguniform
 import torch
 
 import sys
-sys.path.append('$PWD/scripts/')
+import os
+sys.path.append(os.getcwd()+'/scripts/')
 
 
 class Background(torch.nn.Module):

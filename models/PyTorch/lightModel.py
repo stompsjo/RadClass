@@ -6,9 +6,10 @@ import torch.optim as optim
 from tqdm import tqdm
 
 import sys
-sys.path.append('$PWD/scripts/')
-sys.path.append('$PWD/models/PyTorch/')
-sys.path.append('$PWD/models/SSL/')
+import os
+sys.path.append(os.getcwd()+'/scripts/')
+sys.path.append(os.getcwd()+'/models/PyTorch/')
+sys.path.append(os.getcwd()+'/models/SSL/')
 
 from configs import get_datasets
 from evaluate import save_checkpoint, encode_train_set, train_clf, test

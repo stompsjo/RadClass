@@ -6,7 +6,8 @@ import pandas as pd
 from sklearn.metrics import r2_score
 
 import sys
-sys.path.append('$PWD/models/PyTorch/')
+import os
+sys.path.append(os.getcwd()+'/models/PyTorch/')
 from critic import MSELoss
 
 import torch
